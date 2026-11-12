@@ -325,6 +325,7 @@ async function viewAlerts() {
   const [subs, { notifications }] = await Promise.all([api('/api/subscriptions'), api('/api/notifications')]);
   if (isApp) config = await api('/api/config');
   const inbox = groupInbox(notifications, subs);
+  await enrichInbox(inbox, subs);
   // 같은 단지의 매매·전세·월세 구독을 카드 하나로 묶음
   const groups = [];
   for (const s of subs) {
@@ -438,10 +439,31 @@ function groupInbox(notifications, subs) {
       }
     }
     g.rows = [...rows.values()].sort((a, b) => (a.date === b.date ? b.floor - a.floor : a.date < b.date ? 1 : -1));
-    g.textOnly = g.rows.length ? null : first.body; // 거래 정보가 없는 예전 알림/거래 없음 안내
+    // 거래 정보가 없는 예전 알림: '없습니다' 안내보다 실제 거래가 적힌 문구를 우선
+    g.textOnly = g.rows.length ? null : (g.list.find((n) => !/없습니다/.test(n.body)) || first).body;
     g.title = first.title;
     return g;
   });
+}
+
+/** 알림 받는 단지는 최근 한 달 실거래를 직접 다시 불러와 매매·전세·월세를 합쳐 보여줌 */
+async function enrichInbox(inbox, subs) {
+  const d = new Date(Date.now() - 30 * 86400000);
+  const since = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  await Promise.all(inbox.map(async (g) => {
+    const types = subs.filter((s) => s.lawdCd === g.lawdCd && s.complexId === g.complexId).map((s) => s.type);
+    if (!g.complexId || !types.length) return;
+    try {
+      const lists = await Promise.all(types.map((t) => api(`/api/complexes/${g.lawdCd}/${g.complexId}/deals?type=${t}&months=2`)));
+      const newKeys = new Set(g.rows.filter((r) => r.isNew).map((r) => r.key));
+      const rows = new Map();
+      for (const x of lists.flatMap((r) => r.deals)) if (x.date >= since) rows.set(x.key, { ...x, isNew: newKeys.has(x.key) });
+      for (const r of g.rows) if (r.isNew && !rows.has(r.key)) rows.set(r.key, r); // 알림 받은 새 거래는 유지
+      g.rows = [...rows.values()].sort((a, b) => (a.date === b.date ? b.floor - a.floor : a.date < b.date ? 1 : -1));
+      g.recent = true;
+      g.textOnly = g.rows.length ? null : '최근 한 달간 신고된 실거래가 없습니다. 새 거래가 신고되면 알려드릴게요.';
+    } catch { /* 불러오기 실패 시 알림에 저장된 내용으로 표시 */ }
+  }));
 }
 
 const INBOX_PREVIEW = 6;
@@ -460,7 +482,7 @@ function inboxCard(g) {
         <h3>${esc(g.aptNm)}</h3><span class="meta" style="white-space:nowrap">${ago(g.latest)}</span>
       </a>
       ${g.place.trim() ? `<div class="meta">${esc(g.place)}</div>` : ''}
-      ${counts.length ? `<div class="counts">${counts.map(([t, l, c]) => `<span class="tag ${t}">${l} ${c}</span>`).join('')}<span class="meta" style="margin-left:auto">최신순</span></div>` : ''}
+      ${counts.length ? `<div class="counts">${counts.map(([t, l, c]) => `<span class="tag ${t}">${l} ${c}</span>`).join('')}<span class="meta" style="margin-left:auto">${g.recent ? '최근 1개월 · ' : ''}최신순</span></div>` : ''}
       ${g.rows.length ? `<div class="inbox-rows">${g.rows.map((d, i) => (i < INBOX_PREVIEW ? row(d) : row(d).replace('class="inbox-row', 'class="inbox-row extra'))).join('')}</div>
         ${g.rows.length > INBOX_PREVIEW ? `<button class="btn small block" data-more style="margin-top:8px">더 보기 (${g.rows.length - INBOX_PREVIEW}건)</button>` : ''}`
         : `<div class="meta notif-body" style="margin-top:6px">${esc(g.textOnly || '')}</div>`}
