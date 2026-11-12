@@ -20,8 +20,18 @@ android {
         applicationId = "com.aptalert.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = (System.getenv("VERSION_CODE") ?: "1").toInt()
-        versionName = System.getenv("VERSION_NAME") ?: "1.0.0"
+        versionCode = (System.getenv("VERSION_CODE") ?: "2").toInt()
+        versionName = System.getenv("VERSION_NAME") ?: "1.1.0"
+
+        // 기본 중계 서버 주소: 환경변수 PROXY_URL 또는 android/proxy.properties 의 url=
+        val proxyProps = Properties().apply {
+            val f = rootProject.file("proxy.properties")
+            if (f.exists()) f.inputStream().use { load(it) }
+        }
+        val proxyUrl = System.getenv("PROXY_URL") ?: proxyProps.getProperty("url", "")
+        val proxyToken = System.getenv("PROXY_TOKEN") ?: proxyProps.getProperty("token", "")
+        buildConfigField("String", "PROXY_URL", "\"${proxyUrl.trim()}\"")
+        buildConfigField("String", "PROXY_TOKEN", "\"${proxyToken.trim()}\"")
     }
 
     signingConfigs {

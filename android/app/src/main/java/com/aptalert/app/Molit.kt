@@ -183,13 +183,14 @@ object Molit {
 }
 
 fun interface HttpGet {
-    fun get(url: String): Pair<Int, String>
+    fun get(url: String, headers: Map<String, String>): Pair<Int, String>
 }
 
-val defaultHttp = HttpGet { url ->
+val defaultHttp = HttpGet { url, headers ->
     val c = URL(url).openConnection() as HttpURLConnection
     c.connectTimeout = 15000
     c.readTimeout = 25000
+    headers.forEach { (k, v) -> c.setRequestProperty(k, v) }
     try {
         val code = c.responseCode
         val stream = if (code in 200..299) c.inputStream else (c.errorStream ?: c.inputStream)
@@ -201,9 +202,14 @@ val defaultHttp = HttpGet { url ->
     }
 }
 
-/** 국토부 API 호출 + 캐시 (최근 2개월: 1시간, 이전 달: 7일 디스크 캐시) */
+/**
+ * 국토부 API 호출 + 캐시 (최근 2개월: 1시간, 이전 달: 7일 디스크 캐시)
+ * 데이터 경로: 개인 API 키가 있으면 국토부 직접 호출, 없으면 중계 서버(proxy) 경유
+ */
 class MolitClient(
     private val keyProvider: () -> String,
+    private val proxyProvider: () -> String,
+    private val proxyToken: String,
     private val http: HttpGet,
     private val cacheDir: File?,
     private val clock: () -> Long = System::currentTimeMillis,
@@ -216,18 +222,39 @@ class MolitClient(
     private fun encodeKey(key: String) =
         if (Regex("%[0-9A-Fa-f]{2}").containsMatchIn(key)) key else URLEncoder.encode(key, "UTF-8")
 
-    fun fetchLive(api: String, lawdCd: String, ym: String, key: String = keyProvider()): List<Deal> {
+    fun fetchLive(
+        api: String,
+        lawdCd: String,
+        ym: String,
+        key: String = keyProvider(),
+        proxy: String = proxyProvider(),
+    ): List<Deal> {
         val k = key.trim()
-        if (k.isEmpty()) throw ApiError(400, "API 키가 설정되지 않았어요. ⚙️ 설정에서 국토교통부 API 키를 입력해 주세요.")
+        val px = proxy.trim().trimEnd('/')
+        if (k.isEmpty() && px.isEmpty()) {
+            throw ApiError(400, "데이터 연결이 설정되지 않았어요. ⚙️ 설정에서 중계 서버 주소 또는 API 키를 입력해 주세요.")
+        }
+        if (k.isEmpty() && !px.startsWith("https://")) throw ApiError(400, "중계 서버 주소는 https:// 로 시작해야 해요.")
         val base = if (api == "trade") Molit.TRADE_URL else Molit.RENT_URL
+        val headers = if (k.isEmpty() && proxyToken.isNotEmpty()) mapOf("X-App-Token" to proxyToken) else emptyMap()
         val all = mutableListOf<Map<String, String>>()
         for (page in 1..50) {
-            val url = "$base?serviceKey=${encodeKey(k)}&LAWD_CD=$lawdCd&DEAL_YMD=$ym&pageNo=$page&numOfRows=1000"
-            val (status, body) = http.get(url)
-            if (!body.trimStart().startsWith("<")) {
+            val params = "LAWD_CD=$lawdCd&DEAL_YMD=$ym&pageNo=$page&numOfRows=1000"
+            val url = if (k.isNotEmpty()) "$base?serviceKey=${encodeKey(k)}&$params" else "$px/molit/$api?$params"
+            val (status, body) = http.get(url, headers)
+            val trimmed = body.trimStart()
+            if (trimmed.startsWith("{")) {
+                // 중계 서버의 오류 메시지
+                val msg = runCatching { JSONObject(trimmed).optString("error") }.getOrNull().orEmpty()
+                throw MolitException(msg.ifEmpty { "중계 서버 오류 (HTTP $status)" })
+            }
+            if (!trimmed.startsWith("<")) {
                 throw MolitException(
-                    if (status == 401 || status == 403 || body.contains("Unauthorized", true)) Molit.friendly("SERVICE_KEY_IS_NOT_REGISTERED", "30")
-                    else "국토부 서버 오류 (HTTP $status). 잠시 후 다시 시도해 주세요.",
+                    when {
+                        k.isEmpty() -> "중계 서버에 연결하지 못했어요 (HTTP $status). 주소를 확인해 주세요."
+                        status == 401 || status == 403 || body.contains("Unauthorized", true) -> Molit.friendly("SERVICE_KEY_IS_NOT_REGISTERED", "30")
+                        else -> "국토부 서버 오류 (HTTP $status). 잠시 후 다시 시도해 주세요."
+                    },
                 )
             }
             val parsed = Molit.parse(body)

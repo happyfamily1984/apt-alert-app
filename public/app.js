@@ -71,7 +71,7 @@ function toast(msg) {
   toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
 }
 const loading = () => { $view.innerHTML = '<div class="spinner"></div>'; };
-const errorHtml = (e) => `<div class="error">⚠️ ${esc(e.message)}${isApp && /키/.test(e.message) ? '<br><br><a class="btn primary" href="#/settings">⚙️ API 키 설정하러 가기</a>' : ''}</div>`;
+const errorHtml = (e) => `<div class="error">⚠️ ${esc(e.message)}${isApp && /키|연결|중계/.test(e.message) ? '<br><br><a class="btn primary" href="#/settings">⚙️ 연결 설정하러 가기</a>' : ''}</div>`;
 const showError = (e) => { $view.innerHTML = errorHtml(e); };
 
 function setHeader(title, back) {
@@ -123,7 +123,7 @@ async function viewHome() {
   const render = (selected) => {
     const r = regionsCache.find((x) => x.sido === selected) || regionsCache[0];
     $view.innerHTML = `
-      ${isApp && !config.hasKey ? '<a class="banner" href="#/settings">👉 먼저 국토교통부 API 키를 설정해 주세요 (무료, 휴대폰으로 5분)</a>' : ''}
+      ${isApp && !config.hasKey ? '<a class="banner" href="#/settings">👉 먼저 ⚙️ 설정에서 데이터 연결(중계 서버 주소 또는 API 키)을 설정해 주세요</a>' : ''}
       ${recent.length ? `<div class="section-title">최근 본 지역</div>
         <div class="chips">${recent.map((x) => `<a class="chip" href="#/region/${x.code}">${esc(x.name)}</a>`).join('')}</div>` : ''}
       <div class="section-title">시·도</div>
@@ -383,14 +383,32 @@ async function viewSettings() {
   config = await api('/api/config');
   const permText = { granted: '<span class="ok">✅ 켜짐</span>', denied: '🚫 꺼짐', default: '아직 허용 안 함' }[config.notifyPermission] || '-';
   $view.innerHTML = `
-    <div class="section-title">국토교통부 API 키</div>
+    <div class="section-title">데이터 연결</div>
     <div class="card stack">
-      <div class="meta" id="keyStatus">${st.serviceKeySet ? `<span class="ok">✅ 저장됨</span> (${esc(st.serviceKeyMasked)})` : '❗ 아직 키가 없어요. 아래 안내대로 무료로 발급받아 붙여넣으세요.'}</div>
-      <label class="field"><span>일반 인증키 (Encoding 또는 Decoding 아무거나)</span>
-        <input id="keyInput" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="발급받은 인증키 붙여넣기" /></label>
-      <button class="btn primary block" id="saveKey">저장하고 연결 테스트</button>
-      <div id="keyResult" class="meta"></div>
+      <div id="srcStatus">${{
+        proxy: '<span class="ok">✅ 중계 서버 사용 중</span> <span class="meta">— API 키 입력 없이 바로 쓸 수 있어요</span>',
+        key: '<span class="ok">✅ 개인 API 키 사용 중</span>',
+        none: '❗ 연결 설정이 필요해요. 중계 서버 주소를 넣거나 개인 API 키를 입력하세요.',
+      }[st.dataSource]}</div>
+      <label class="field"><span>중계 서버 주소</span>
+        <input id="proxyInput" type="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://apt-alert.○○○.workers.dev" value="${esc(st.proxyUrl)}" /></label>
+      <button class="btn primary block" id="saveProxy">중계 서버 저장하고 테스트</button>
+      <div id="proxyResult" class="meta"></div>
     </div>
+
+    <details class="card" ${st.serviceKeySet || st.dataSource === 'none' ? 'open' : ''}>
+      <summary><b>개인 API 키 (선택)</b> <span class="meta">— 중계 서버 대신 내 키로 직접 조회</span></summary>
+      <div class="stack" style="margin-top:12px">
+        <div class="meta" id="keyStatus">${st.serviceKeySet ? `<span class="ok">✅ 저장됨</span> (${esc(st.serviceKeyMasked)}) · 개인 키가 있으면 개인 키를 우선 사용해요` : '입력하지 않으면 중계 서버를 사용해요.'}</div>
+        <label class="field"><span>일반 인증키 (Encoding 또는 Decoding 아무거나)</span>
+          <input id="keyInput" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="발급받은 인증키 붙여넣기" /></label>
+        <div class="btn-row">
+          <button class="btn primary" id="saveKey">키 저장하고 테스트</button>
+          ${st.serviceKeySet ? '<button class="btn" id="removeKey">키 삭제</button>' : ''}
+        </div>
+        <div id="keyResult" class="meta"></div>
+      </div>
+    </details>
 
     <div class="section-title">알림</div>
     <div class="card stack">
@@ -406,8 +424,9 @@ async function viewSettings() {
       <button class="btn block" id="battery">🔋 배터리 최적화 해제 (알림이 늦게 올 때)</button>
     </div>
 
-    <div class="section-title">API 키 발급 방법 (휴대폰으로 가능)</div>
-    <div class="card">
+    <details class="card" style="margin-top:20px">
+      <summary><b>개인 API 키 발급 방법</b> <span class="meta">(휴대폰으로 가능)</span></summary>
+      <div style="margin-top:12px">
       <ol class="guide">
         <li><a class="link" href="https://www.data.go.kr" target="_blank" rel="noopener">공공데이터포털(data.go.kr)</a>에 회원가입 후 로그인</li>
         <li>검색창에 <b>아파트 매매 실거래가</b> 검색 → <b>「국토교통부_아파트 매매 실거래가 자료」</b> → <b>활용신청</b> (활용목적: 개인 참고용, 자동 승인)</li>
@@ -416,28 +435,43 @@ async function viewSettings() {
         <li>위 입력칸에 붙여넣고 <b>저장하고 연결 테스트</b> → ✅ 나오면 끝!</li>
       </ol>
       <p class="meta" style="margin:8px 0 0">승인 직후에는 키가 활성화되기까지 1~2시간 걸릴 수 있어요. 테스트가 실패하면 잠시 후 다시 해보세요.</p>
-    </div>
+      </div>
+    </details>
     <p class="meta" style="margin:16px 4px">앱 버전 ${esc(config.appVersion || '')} · 데이터 출처: 국토교통부 실거래가 공개시스템</p>`;
 
-  const $res = $view.querySelector('#keyResult');
-  $view.querySelector('#saveKey').onclick = async (ev) => {
-    const key = $view.querySelector('#keyInput').value.trim();
-    if (!key && !st.serviceKeySet) return toast('인증키를 붙여넣어 주세요');
-    ev.target.disabled = true;
-    $res.textContent = '연결 테스트 중…';
+  const okMsg = (r) => `<span class="ok">✅ 연결 성공!</span> 매매 ${r.trade}건 · 전월세 ${r.rent}건 확인 (서울 강남구 지난달)`;
+  const failMsg = (e) => `<span style="color:var(--danger)">❌ ${esc(e.message)}</span>`;
+  const runTest = async (btn, $out, body, save) => {
+    btn.disabled = true;
+    $out.textContent = '연결 테스트 중…';
     try {
-      const r = await api('/api/settings/test', { method: 'POST', body: { serviceKey: key || undefined } });
-      if (key) await api('/api/settings', { method: 'POST', body: { serviceKey: key } });
-      $res.innerHTML = `<span class="ok">✅ 연결 성공!</span> 매매 ${r.trade}건 · 전월세 ${r.rent}건 확인 (서울 강남구 지난달)`;
-      toast('API 키가 저장되었어요');
+      const r = await api('/api/settings/test', { method: 'POST', body });
+      await api('/api/settings', { method: 'POST', body: save });
+      $out.innerHTML = okMsg(r);
+      toast('저장되었어요');
       config.hasKey = true;
-      if (key) $view.querySelector('#keyStatus').innerHTML = '<span class="ok">✅ 저장됨</span>';
+      setTimeout(viewSettings, 1500);
     } catch (e) {
-      $res.innerHTML = `<span style="color:var(--danger)">❌ ${esc(e.message)}</span>`;
+      $out.innerHTML = failMsg(e);
     } finally {
-      ev.target.disabled = false;
+      btn.disabled = false;
     }
   };
+  $view.querySelector('#saveProxy').onclick = (ev) => {
+    const url = $view.querySelector('#proxyInput').value.trim();
+    if (!url) return toast('중계 서버 주소를 입력해 주세요');
+    runTest(ev.target, $view.querySelector('#proxyResult'), { proxyUrl: url }, { proxyUrl: url });
+  };
+  $view.querySelector('#saveKey').onclick = (ev) => {
+    const key = $view.querySelector('#keyInput').value.trim();
+    if (!key) return toast('인증키를 붙여넣어 주세요');
+    runTest(ev.target, $view.querySelector('#keyResult'), { serviceKey: key }, { serviceKey: key });
+  };
+  $view.querySelector('#removeKey')?.addEventListener('click', async () => {
+    await api('/api/settings', { method: 'POST', body: { serviceKey: '' } });
+    toast('개인 키를 삭제했어요. 중계 서버를 사용합니다');
+    viewSettings();
+  });
   $view.querySelector('#interval').onchange = async (ev) => {
     await api('/api/settings', { method: 'POST', body: { pollIntervalMinutes: Number(ev.target.value) } });
     toast(`${intervalLabel(Number(ev.target.value))}마다 확인할게요`);

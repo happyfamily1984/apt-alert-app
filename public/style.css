@@ -164,3 +164,8 @@ a.card:active { background: var(--surface-2); }
 .guide a, .link { color: var(--accent); text-decoration: underline; }
 .ok { color: var(--jeonse); }
 .stack > * + * { margin-top: 12px; }
+details.card summary { cursor: pointer; list-style: none; }
+details.card summary::-webkit-details-marker { display: none; }
+details.card summary::before { content: '▸ '; color: var(--muted); }
+details.card[open] summary::before { content: '▾ '; }
+details.card { margin-top: 12px; }

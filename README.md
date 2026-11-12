@@ -7,9 +7,10 @@
 
 ## 📱 안드로이드 앱 (PC·서버 없이 사용)
 
-- **APK 다운로드**: [`release/apt-alert-1.0.0.apk`](release/apt-alert-1.0.0.apk) (또는 Releases)
+- **APK 다운로드**: [`release/apt-alert-1.1.0.apk`](release/apt-alert-1.1.0.apk) (또는 Releases)
 - **설치·API 키·알림 설정 안내**: [docs/사용설명서.md](docs/사용설명서.md)
-- 휴대폰이 직접 국토부 API를 호출하고, WorkManager로 백그라운드에서 주기적으로 새 거래를 확인해 알림을 띄웁니다. 서버·비용 없음.
+- **중계 서버 배포 (API 키 하나로 여러 명 사용)**: [docs/중계서버-배포.md](docs/중계서버-배포.md) — Cloudflare Worker(`worker/worker.js`), 무료
+- 데이터 경로: 개인 API 키가 있으면 국토부 직접 호출, 없으면 중계 서버 경유. 새 거래 확인은 각 휴대폰이 WorkManager로 백그라운드에서 하고 알림을 띄웁니다.
 - 소스: `android/` (Kotlin, WebView에 `public/` 웹 UI를 그대로 탑재)
 - 빌드: `cd android && ./gradlew assembleRelease` 또는 GitHub Actions(`.github/workflows/android.yml`)
 
@@ -65,6 +66,7 @@ server/
   store.js     JSON 파일 저장소 (data/db.json)
   regions.js   시군구 코드 로더 (shared/regions.json)
 shared/        시군구 코드 목록 (서버·앱 공용)
+worker/        중계 서버 (Cloudflare Worker: API 키 보관 + 캐시)
 android/       안드로이드 앱 (Kotlin: 국토부 API·알림·백그라운드 확인 / WebView UI)
 public/        PWA 프런트엔드 (index.html, app.js, style.css, sw.js)
 test/          node:test 단위 테스트 (+ 실제 응답 형태 XML 픽스처)

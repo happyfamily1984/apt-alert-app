@@ -1,0 +1,9 @@
+# (선택) PC에서 wrangler CLI로 배포할 때 사용. 휴대폰 대시보드 배포에는 필요 없음.
+name = "apt-alert"
+main = "worker.js"
+compatibility_date = "2025-01-01"
+
+# KV 캐시를 쓰려면: npx wrangler kv namespace create CACHE 후 아래 주석 해제
+# [[kv_namespaces]]
+# binding = "CACHE"
+# id = "<생성된 id>"

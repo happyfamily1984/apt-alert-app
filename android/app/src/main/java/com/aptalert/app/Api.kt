@@ -23,10 +23,23 @@ class Core(
     val notifier: Notifier,
     val platform: Platform,
     clock: () -> Long = System::currentTimeMillis,
+    /** APK에 기본으로 넣은 중계 서버 주소 (BuildConfig.PROXY_URL) */
+    val defaultProxyUrl: String = "",
+    proxyToken: String = "",
 ) {
     val store = Store(filesDir?.let { File(it, "db.json") })
     val regions = Regions(regionsJson)
-    val molit = MolitClient({ store.settings.optString("serviceKey") }, http, cacheDir, clock)
+    val molit = MolitClient({ serviceKey() }, { proxyUrl() }, proxyToken, http, cacheDir, clock)
+
+    fun serviceKey(): String = store.settings.optString("serviceKey")
+    fun proxyUrl(): String = if (store.settings.has("proxyUrl")) store.settings.optString("proxyUrl") else defaultProxyUrl
+
+    /** key: 개인 API 키 / proxy: 중계 서버 / none: 설정 필요 */
+    fun dataSource(): String = when {
+        serviceKey().isNotBlank() -> "key"
+        proxyUrl().isNotBlank() -> "proxy"
+        else -> "none"
+    }
     val service = Service(molit)
     val alerts = Alerts(store, molit, service, notifier, clock)
     val api = Api(this)
@@ -70,7 +83,8 @@ class Api(private val core: Core) {
             method == "GET" && r == listOf("config") -> JSONObject()
                 .put("demo", false).put("app", true).put("vapidPublicKey", JSONObject.NULL)
                 .put("lastPollAt", core.store.data.opt("lastPollAt") ?: JSONObject.NULL)
-                .put("hasKey", core.store.settings.optString("serviceKey").isNotBlank())
+                .put("hasKey", core.dataSource() != "none")
+                .put("dataSource", core.dataSource())
                 .put("pollIntervalMinutes", core.pollIntervalMinutes())
                 .put("notifyPermission", core.platform.notifyPermission())
                 .put("appVersion", core.platform.appVersion)
@@ -142,14 +156,21 @@ class Api(private val core: Core) {
 
             // ----- 설정 -----
             method == "GET" && r == listOf("settings") -> {
-                val key = core.store.settings.optString("serviceKey")
+                val key = core.serviceKey()
                 JSONObject().put("serviceKeySet", key.isNotBlank())
+                    .put("dataSource", core.dataSource())
+                    .put("proxyUrl", core.proxyUrl())
+                    .put("defaultProxyUrl", core.defaultProxyUrl)
                     .put("serviceKeyMasked", if (key.length > 8) key.take(4) + "••••" + key.takeLast(4) else if (key.isNotEmpty()) "••••" else "")
                     .put("pollIntervalMinutes", core.pollIntervalMinutes())
             }
 
             method == "POST" && r == listOf("settings") -> {
                 if (body.has("serviceKey")) core.store.settings.put("serviceKey", body.getString("serviceKey").trim())
+                if (body.has("proxyUrl")) {
+                    val u = body.getString("proxyUrl").trim().trimEnd('/')
+                    if (u.isEmpty()) core.store.settings.remove("proxyUrl") else core.store.settings.put("proxyUrl", u)
+                }
                 if (body.has("pollIntervalMinutes")) {
                     core.store.settings.put("pollIntervalMinutes", body.getInt("pollIntervalMinutes").coerceIn(15, 1440))
                     core.platform.schedulePolling(core.pollIntervalMinutes())
@@ -158,16 +179,23 @@ class Api(private val core: Core) {
                 JSONObject().put("ok", true)
             }
 
+            // body: {serviceKey} → 개인 키 테스트 / {proxyUrl} → 중계 서버 테스트 / {} → 현재 설정 테스트
             method == "POST" && r == listOf("settings", "test") -> {
-                val key = body.optString("serviceKey").ifBlank { core.store.settings.optString("serviceKey") }
+                val key: String
+                val proxy: String
+                when {
+                    body.optString("serviceKey").isNotBlank() -> { key = body.getString("serviceKey"); proxy = "" }
+                    body.has("proxyUrl") -> { key = ""; proxy = body.getString("proxyUrl").ifBlank { core.defaultProxyUrl } }
+                    else -> { key = core.serviceKey(); proxy = core.proxyUrl() }
+                }
                 val ym = Molit.recentYms(2, core.molit.today())[1] // 지난달
-                val trade = try { core.molit.fetchLive("trade", "11680", ym, key).size } catch (e: ApiError) {
-                    throw ApiError(e.status, "[매매 API] ${e.message}")
+                val trade = try { core.molit.fetchLive("trade", "11680", ym, key, proxy).size } catch (e: ApiError) {
+                    throw ApiError(e.status, "[매매] ${e.message}")
                 }
-                val rent = try { core.molit.fetchLive("rent", "11680", ym, key).size } catch (e: ApiError) {
-                    throw ApiError(e.status, "[전월세 API] ${e.message}")
+                val rent = try { core.molit.fetchLive("rent", "11680", ym, key, proxy).size } catch (e: ApiError) {
+                    throw ApiError(e.status, "[전월세] ${e.message}")
                 }
-                JSONObject().put("ok", true).put("trade", trade).put("rent", rent)
+                JSONObject().put("ok", true).put("trade", trade).put("rent", rent).put("via", if (key.isNotBlank()) "key" else "proxy")
             }
 
             method == "POST" && r == listOf("app", "open-notification-settings") -> { core.platform.openNotificationSettings(); JSONObject().put("ok", true) }

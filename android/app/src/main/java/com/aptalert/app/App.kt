@@ -30,7 +30,10 @@ class App : Application() {
     override fun onCreate() {
         super.onCreate()
         val regions = assets.open("www/regions.json").bufferedReader().use { it.readText() }
-        core = Core(filesDir, cacheDir, regions, defaultHttp, AndroidNotifier(this), AndroidPlatform(this))
+        core = Core(
+            filesDir, cacheDir, regions, defaultHttp, AndroidNotifier(this), AndroidPlatform(this),
+            defaultProxyUrl = BuildConfig.PROXY_URL, proxyToken = BuildConfig.PROXY_TOKEN,
+        )
         AndroidNotifier.createChannel(this)
         if (core.store.subscriptions.length() > 0) schedulePolling(this, core.pollIntervalMinutes(), replace = false)
     }

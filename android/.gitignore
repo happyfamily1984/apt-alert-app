@@ -5,3 +5,4 @@ keystore.properties
 *.jks
 *.keystore
 .idea/
+proxy.properties
