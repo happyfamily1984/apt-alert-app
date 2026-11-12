@@ -26,13 +26,15 @@ class Core(
     /** APK에 기본으로 넣은 중계 서버 주소 (BuildConfig.PROXY_URL) */
     val defaultProxyUrl: String = "",
     proxyToken: String = "",
+    /** true면 항상 기본 중계 서버만 사용 (개인 키·주소 설정 무시, 설정 화면에서도 숨김) */
+    val relayOnly: Boolean = false,
 ) {
     val store = Store(filesDir?.let { File(it, "db.json") })
     val regions = Regions(regionsJson)
     val molit = MolitClient({ serviceKey() }, { proxyUrl() }, proxyToken, http, cacheDir, clock)
 
-    fun serviceKey(): String = store.settings.optString("serviceKey")
-    fun proxyUrl(): String = if (store.settings.has("proxyUrl")) store.settings.optString("proxyUrl") else defaultProxyUrl
+    fun serviceKey(): String = if (relayOnly) "" else store.settings.optString("serviceKey")
+    fun proxyUrl(): String = if (relayOnly || !store.settings.has("proxyUrl")) defaultProxyUrl else store.settings.optString("proxyUrl")
 
     /** key: 개인 API 키 / proxy: 중계 서버 / none: 설정 필요 */
     fun dataSource(): String = when {
@@ -85,6 +87,7 @@ class Api(private val core: Core) {
                 .put("lastPollAt", core.store.data.opt("lastPollAt") ?: JSONObject.NULL)
                 .put("hasKey", core.dataSource() != "none")
                 .put("dataSource", core.dataSource())
+                .put("relayOnly", core.relayOnly)
                 .put("pollIntervalMinutes", core.pollIntervalMinutes())
                 .put("notifyPermission", core.platform.notifyPermission())
                 .put("appVersion", core.platform.appVersion)
@@ -166,8 +169,8 @@ class Api(private val core: Core) {
             }
 
             method == "POST" && r == listOf("settings") -> {
-                if (body.has("serviceKey")) core.store.settings.put("serviceKey", body.getString("serviceKey").trim())
-                if (body.has("proxyUrl")) {
+                if (body.has("serviceKey") && !core.relayOnly) core.store.settings.put("serviceKey", body.getString("serviceKey").trim())
+                if (body.has("proxyUrl") && !core.relayOnly) {
                     val u = body.getString("proxyUrl").trim().trimEnd('/')
                     if (u.isEmpty()) core.store.settings.remove("proxyUrl") else core.store.settings.put("proxyUrl", u)
                 }

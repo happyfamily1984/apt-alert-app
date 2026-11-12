@@ -84,8 +84,8 @@ class CoreTest {
     private val regions = File("../../shared/regions.json").readText()
     private val clock = { ZonedDateTime.of(2026, 11, 12, 10, 0, 0, 0, KST).toInstant().toEpochMilli() }
 
-    private fun core(server: FakeServer, dir: File? = null, proxy: String = "", token: String = "") =
-        Core(dir, null, regions, server.http, { _, t, b, _ -> shown.add(t to b); true }, platform, clock, proxy, token)
+    private fun core(server: FakeServer, dir: File? = null, proxy: String = "", token: String = "", relayOnly: Boolean = false) =
+        Core(dir, null, regions, server.http, { _, t, b, _ -> shown.add(t to b); true }, platform, clock, proxy, token, relayOnly)
 
     private fun call(c: Core, m: String, p: String, body: String = "") = JSONObject(c.api.handle(m, p, body))
 
@@ -180,6 +180,23 @@ class CoreTest {
         assertEquals("테스트 아파트", n.getString("aptNm"))
         assertEquals(3, n.getJSONArray("deals").length())
         assertEquals("monthly", n.getString("type"))
+    }
+
+    @Test fun relayOnlyIgnoresPersonalSettings() {
+        val s = FakeServer()
+        s.trades += s.item(3, "300,000", 5)
+        val dir = createTempDir()
+        // 예전 버전에서 개인 키·다른 주소를 저장해 둔 상태
+        core(s, dir).let { call(it, "POST", "/api/settings", """{"serviceKey":"good","proxyUrl":"https://old.test"}""") }
+        val c = core(s, dir, proxy = "https://proxy.test", token = "tok", relayOnly = true)
+        val cfg = call(c, "GET", "/api/config").getJSONObject("data")
+        assertTrue(cfg.getBoolean("relayOnly"))
+        assertEquals("proxy", cfg.getString("dataSource"))
+        assertEquals(1, call(c, "GET", "/api/regions/11650/complexes").getJSONObject("data").getJSONArray("complexes").length())
+        assertEquals("tok", s.lastHeaders["X-App-Token"]) // 중계 서버로 감
+        call(c, "POST", "/api/settings", """{"serviceKey":"x"}""") // 무시됨
+        assertEquals("proxy", call(c, "GET", "/api/config").getJSONObject("data").getString("dataSource"))
+        dir.deleteRecursively()
     }
 
     @Test fun proxyMode() {

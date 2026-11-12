@@ -196,3 +196,5 @@ a.tag-chip { padding: 0 6px; }
 .new-dot { font-size: 10px; font-weight: 800; color: #fff; background: var(--danger); border-radius: 4px; padding: 1px 4px; }
 .ir-rent { font-size: 13px; font-weight: 700; color: var(--monthly); }
 .ir-right .new-dot, .ir-right .tag { margin-top: 2px; }
+[hidden] { display: none !important; }
+#dataSection[hidden] + .section-title { margin-top: 0; }

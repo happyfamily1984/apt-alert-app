@@ -72,7 +72,7 @@ function toast(msg) {
   toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
 }
 const loading = () => { $view.innerHTML = '<div class="spinner"></div>'; };
-const errorHtml = (e) => `<div class="error">⚠️ ${esc(e.message)}${isApp && /키|연결|중계/.test(e.message) ? '<br><br><a class="btn primary" href="#/settings">⚙️ 연결 설정하러 가기</a>' : ''}</div>`;
+const errorHtml = (e) => `<div class="error">⚠️ ${esc(e.message)}${isApp && !config?.relayOnly && /키|연결|중계/.test(e.message) ? '<br><br><a class="btn primary" href="#/settings">⚙️ 연결 설정하러 가기</a>' : ''}</div>`;
 const showError = (e) => { $view.innerHTML = errorHtml(e); };
 
 function setHeader(title, back) {
@@ -481,6 +481,7 @@ async function viewSettings() {
   config = await api('/api/config');
   const permText = { granted: '<span class="ok">✅ 켜짐</span>', denied: '🚫 꺼짐', default: '아직 허용 안 함' }[config.notifyPermission] || '-';
   $view.innerHTML = `
+    <div id="dataSection" ${config.relayOnly ? 'hidden' : ''}>
     <div class="section-title">데이터 연결</div>
     <div class="card stack">
       <div id="srcStatus">${{
@@ -508,6 +509,7 @@ async function viewSettings() {
       </div>
     </details>
 
+    </div>
     <div class="section-title">알림</div>
     <div class="card stack">
       <div class="card-row"><span>알림 권한</span><span>${permText}</span></div>
@@ -522,7 +524,7 @@ async function viewSettings() {
       <button class="btn block" id="battery">🔋 배터리 최적화 해제 (알림이 늦게 올 때)</button>
     </div>
 
-    <details class="card" style="margin-top:20px">
+    <details class="card" style="margin-top:20px" ${config.relayOnly ? 'hidden' : ''}>
       <summary><b>개인 API 키 발급 방법</b> <span class="meta">(휴대폰으로 가능)</span></summary>
       <div style="margin-top:12px">
       <ol class="guide">
