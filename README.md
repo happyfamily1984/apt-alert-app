@@ -7,7 +7,7 @@
 
 ## 📱 안드로이드 앱 (PC·서버 없이 사용)
 
-- **APK 다운로드**: [`release/apt-alert-1.1.0.apk`](release/apt-alert-1.1.0.apk) (또는 Releases)
+- **APK 다운로드**: [`release/apt-alert-1.1.1.apk`](release/apt-alert-1.1.1.apk) (또는 Releases)
 - **설치·API 키·알림 설정 안내**: [docs/사용설명서.md](docs/사용설명서.md)
 - **중계 서버 배포 (API 키 하나로 여러 명 사용)**: [docs/중계서버-배포.md](docs/중계서버-배포.md) — Cloudflare Worker(`worker/worker.js`), 무료
 - 데이터 경로: 개인 API 키가 있으면 국토부 직접 호출, 없으면 중계 서버 경유. 새 거래 확인은 각 휴대폰이 WorkManager로 백그라운드에서 하고 알림을 띄웁니다.
