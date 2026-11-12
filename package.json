@@ -1,0 +1,21 @@
+{
+  "name": "apt-alert-app",
+  "version": "0.1.0",
+  "description": "아파트 실거래가(매매·전세·월세) 모니터링 & 알림 앱",
+  "type": "module",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "express": "^5.3.0",
+    "fast-xml-parser": "^5.12.0",
+    "web-push": "^4.0.0"
+  }
+}

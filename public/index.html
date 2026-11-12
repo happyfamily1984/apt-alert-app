@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>실거래 알리미</title>
+  <meta name="description" content="아파트 매매·전세·월세 실거래가 모니터링과 신규 거래 알림" />
+  <meta name="theme-color" content="#2563eb" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="/icon.svg" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <button class="icon-btn" id="backBtn" aria-label="뒤로" hidden>‹</button>
+    <h1 id="title">실거래 알리미</h1>
+    <span class="demo-badge" id="demoBadge" hidden>DEMO</span>
+  </header>
+  <main id="view" aria-live="polite"></main>
+  <nav class="tabbar">
+    <a href="#/" data-tab="search"><span>🔍</span>단지 찾기</a>
+    <a href="#/alerts" data-tab="alerts"><span>🔔</span>내 알림<b class="badge" id="unreadBadge" hidden></b></a>
+  </nav>
+  <div class="toast" id="toast" role="status"></div>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
