@@ -74,6 +74,19 @@ class MainActivity : ComponentActivity() {
         )
     }
 
+    /** 설정한 알림음 미리 듣기 */
+    private var previewRingtone: android.media.Ringtone? = null
+    private fun previewSound(id: Int) {
+        val p = Prefs.get(App.core(this).store.settings)
+        val uri = p.optString("soundUri").takeIf { it.isNotEmpty() }?.let { Uri.parse(it) } ?: Settings.System.DEFAULT_NOTIFICATION_URI
+        val ok = runCatching {
+            previewRingtone?.stop()
+            previewRingtone = RingtoneManager.getRingtone(this, uri)?.also { it.play() }
+            previewRingtone != null
+        }.getOrDefault(false)
+        resolve(id, JSONObject().put("status", if (ok) 200 else 500).put("data", JSONObject().put("ok", ok).put("error", "알림음을 재생할 수 없어요")).toString())
+    }
+
     /** 상태바 색·글자 크기를 설정에 맞춤 */
     private fun applyAppearance(accentHex: String, dark: Boolean, textZoom: Int) {
         runCatching { window.statusBarColor = Color.parseColor(accentHex) }
@@ -158,6 +171,10 @@ class MainActivity : ComponentActivity() {
         fun request(id: Int, method: String, path: String, body: String) {
             if (path.startsWith("/api/push/subscribe")) {
                 runOnUiThread { requestNotificationPermission(id) }
+                return
+            }
+            if (path.startsWith("/api/app/preview-sound")) {
+                runOnUiThread { previewSound(id) }
                 return
             }
             if (path.startsWith("/api/app/pick-sound")) {

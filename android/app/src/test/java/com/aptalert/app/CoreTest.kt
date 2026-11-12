@@ -229,6 +229,29 @@ class CoreTest {
         assertFalse(Prefs.isQuiet(Prefs.defaults(), java.time.LocalTime.of(23, 0))) // 꺼져 있으면 항상 false
     }
 
+    @Test fun notificationDesignPrefs() {
+        val st = JSONObject()
+        val p = Prefs.merge(st, JSONObject().put("notiColor", "red").put("notiIcon", "bell").put("notiTitle", "price")
+            .put("notiDetail", "simple").put("notiLockscreen", "hide"))
+        assertEquals("#DC2626", Prefs.notiColor(p))
+        assertEquals("bell", p.getString("notiIcon"))
+        Prefs.merge(st, JSONObject().put("notiIcon", "rocket").put("notiColor", "app").put("accent", "teal"))
+        assertEquals("bell", Prefs.get(st).getString("notiIcon")) // 없는 아이콘 무시
+        assertEquals("#0D9488", Prefs.notiColor(Prefs.get(st)))    // 앱 색상 따라가기
+
+        // 가격 중심 제목
+        val s = FakeServer()
+        s.trades += s.item(3, "300,000", 5)
+        val c = core(s)
+        call(c, "POST", "/api/settings", """{"serviceKey":"good","prefs":{"notiTitle":"price"}}""")
+        val id = call(c, "GET", "/api/regions/11650/complexes").getJSONObject("data").getJSONArray("complexes").getJSONObject(0).getString("id")
+        call(c, "POST", "/api/subscriptions", """{"lawdCd":"11650","complexId":"$id","type":"trade"}""")
+        s.trades += s.item(10, "310,000", 9)
+        s.trades += s.item(11, "325,000", 12)
+        call(c, "POST", "/api/admin/poll")
+        assertEquals("🏠 테스트 아파트 매매 32억 5,000만 (84.9㎡·12층) 외 1건", shown.last().first)
+    }
+
     @Test fun canceledAlertsCanBeTurnedOff() {
         val s = FakeServer()
         s.trades += s.item(3, "300,000", 5)

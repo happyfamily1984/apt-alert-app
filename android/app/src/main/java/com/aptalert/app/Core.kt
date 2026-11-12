@@ -311,7 +311,13 @@ class Alerts(
             if (!wantCanceled) b.canceled.clear()
             if (b.fresh.isEmpty() && b.canceled.isEmpty()) continue
             val apt = b.sub.getString("aptNm")
+            val p = Prefs.get(store.settings)
+            val top = sorted(b.fresh).firstOrNull()
             val title = when {
+                // 가격 중심: 가장 최근 새 거래의 가격을 제목에
+                p.optString("notiTitle") == "price" && top != null ->
+                    "🏠 $apt ${Molit.TYPES[top.type]} ${Fmt.price(top)} (${Fmt.area(top.area)}㎡·${top.floor}층)" +
+                        (if (b.fresh.size + b.canceled.size > 1) " 외 ${b.fresh.size + b.canceled.size - 1}건" else "")
                 b.fresh.isNotEmpty() && b.canceled.isNotEmpty() -> "🏠 $apt 새 실거래 ${b.fresh.size}건 · 해제 ${b.canceled.size}건"
                 b.fresh.isNotEmpty() -> "🏠 $apt 새 실거래 ${b.fresh.size}건 (${typeSummary(b.fresh)})"
                 else -> "⚠️ $apt 거래 해제 ${b.canceled.size}건"

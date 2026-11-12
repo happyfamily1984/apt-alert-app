@@ -135,15 +135,33 @@ class AndroidNotifier(private val ctx: Context) : Notifier {
             putExtra(MainActivity.EXTRA_HASH, hash)
         }
         val pi = PendingIntent.getActivity(ctx, id, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        val n = NotificationCompat.Builder(ctx, channel)
-            .setSmallIcon(R.drawable.ic_stat_house)
-            .setColor(android.graphics.Color.parseColor(Prefs.accentColor(p, false)))
+        val icon = when (p.optString("notiIcon")) {
+            "building" -> R.drawable.ic_stat_building
+            "bell" -> R.drawable.ic_stat_bell
+            "chart" -> R.drawable.ic_stat_chart
+            else -> R.drawable.ic_stat_house
+        }
+        val color = android.graphics.Color.parseColor(Prefs.notiColor(p))
+        val builder = NotificationCompat.Builder(ctx, channel)
+            .setSmallIcon(icon)
+            .setColor(color)
             .setContentTitle(title)
             .setContentText(body.lineSequence().firstOrNull() ?: "")
-            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setContentIntent(pi)
             .setAutoCancel(true)
-            .build()
+        // 내용 표시: 자세히(펼친 목록) / 간단히(한 줄)
+        if (p.optString("notiDetail") != "simple") builder.setStyle(NotificationCompat.BigTextStyle().bigText(body))
+        // 잠금화면: 내용 숨기기
+        if (p.optString("notiLockscreen") == "hide") {
+            builder.setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            builder.setPublicVersion(
+                NotificationCompat.Builder(ctx, channel).setSmallIcon(icon).setColor(color)
+                    .setContentTitle("실거래 알리미").setContentText("새 실거래 알림이 있어요").build(),
+            )
+        } else {
+            builder.setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+        }
+        val n = builder.build()
         return try {
             NotificationManagerCompat.from(ctx).notify(id, n)
             true

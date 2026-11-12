@@ -26,6 +26,7 @@ object Prefs {
     )
 
     private val THEMES = setOf("system", "light", "dark")
+    val ICONS = listOf("house", "building", "bell", "chart")
     private val FONT_SCALES = setOf(85, 100, 115, 130)
     private val TIME = Regex("^([01]\\d|2[0-3]):[0-5]\\d$")
 
@@ -35,6 +36,9 @@ object Prefs {
         .put("notiPopup", true).put("notiCanceled", true)
         .put("quietEnabled", false).put("quietStart", "22:00").put("quietEnd", "08:00")
         .put("theme", "system").put("accent", "blue").put("fontScale", 100)
+        // 알림 디자인
+        .put("notiColor", "app").put("notiIcon", "house").put("notiTitle", "count")
+        .put("notiDetail", "detail").put("notiLockscreen", "show")
 
     /** 저장된 설정 + 기본값 */
     fun get(settings: JSONObject): JSONObject {
@@ -58,6 +62,11 @@ object Prefs {
                 "theme" -> v in THEMES
                 "accent" -> v in ACCENTS
                 "fontScale" -> (v as? Number)?.toInt() in FONT_SCALES
+                "notiColor" -> v == "app" || v in ACCENTS
+                "notiIcon" -> v in ICONS
+                "notiTitle" -> v == "count" || v == "price"
+                "notiDetail" -> v == "simple" || v == "detail"
+                "notiLockscreen" -> v == "show" || v == "hide"
                 else -> false
             }
             if (ok) saved.put(k, if (k == "fontScale") (v as Number).toInt() else v)
@@ -72,6 +81,12 @@ object Prefs {
         val e = runCatching { LocalTime.parse(p.optString("quietEnd")) }.getOrNull() ?: return false
         if (s == e) return false
         return if (s < e) !now.isBefore(s) && now.isBefore(e) else !now.isBefore(s) || now.isBefore(e)
+    }
+
+    /** 알림 색: '앱 색상 따라가기'면 강조 색상 */
+    fun notiColor(p: JSONObject): String {
+        val k = p.optString("notiColor", "app")
+        return (ACCENTS[if (k == "app") p.optString("accent") else k] ?: ACCENTS.getValue("blue")).first
     }
 
     fun accentColor(p: JSONObject, dark: Boolean): String =

@@ -54,7 +54,15 @@ const ACCENTS = {
 const DEFAULT_PREFS = {
   notiSound: true, soundName: '기본 알림음', notiVibrate: true, vibratePattern: 'short', notiPopup: true, notiCanceled: true,
   quietEnabled: false, quietStart: '22:00', quietEnd: '08:00', theme: 'system', accent: 'blue', fontScale: 100,
+  notiColor: 'app', notiIcon: 'house', notiTitle: 'count', notiDetail: 'detail', notiLockscreen: 'show',
 };
+const NOTI_ICONS = {
+  house: ['집', 'M4 21V10l8-6 8 6v11h-5v-6H9v6z'],
+  building: ['아파트', 'M4 21V5h10v16h-3v-4H7v4zM6 7v2h2V7zM10 7v2h2V7zM6 11v2h2v-2zM10 11v2h2v-2zM16 21V10h4v11z'],
+  bell: ['종', 'M12 22a2.5 2.5 0 0 0 2.5-2.5h-5A2.5 2.5 0 0 0 12 22zM19 16v-5a7 7 0 0 0-5.5-6.8V3h-3v1.2A7 7 0 0 0 5 11v5l-2 2v1h18v-1z'],
+  chart: ['그래프', 'M3 20h18v2H3zM4.5 16.5l4.5-5.5 3.5 3 5-7 2.5 1.8-7 9.7-3.5-3-3.1 3.8z'],
+};
+const iconSvg = (k, size = 12, color = '#fff') => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" aria-hidden="true"><path fill="${color}" fill-rule="evenodd" d="${(NOTI_ICONS[k] || NOTI_ICONS.house)[1]}"/></svg>`;
 let prefs = { ...DEFAULT_PREFS };
 try { Object.assign(prefs, JSON.parse(localStorage.getItem('prefs') || '{}')); } catch { /* */ }
 const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
@@ -528,9 +536,8 @@ function inboxCard(g) {
   const href = g.complexId ? `#/complex/${g.lawdCd}/${g.complexId}?type=${g.rows[0]?.type || 'trade'}` : '#/alerts';
   const row = (d) => `
     <a class="inbox-row ${d.canceled ? 'canceled' : ''}" href="#/complex/${g.lawdCd}/${g.complexId}?type=${d.type}&focus=${encodeURIComponent(d.key)}">
-      <span class="tag ${d.type}">${TYPES[d.type]}</span>
-      <span class="ir-mid"><b class="num">${d.date.slice(2).replace(/-/g, '.')}</b><small class="meta num">${m2(d.area)}㎡ · ${d.floor}층</small></span>
-      <span class="ir-right"><span class="price num ir-price">${d.type === 'monthly' ? won(d.deposit) : dealPrice(d)}</span>${d.type === 'monthly' ? `<small class="ir-rent num">월 ${Number(d.monthlyRent).toLocaleString()}만</small>` : ''}${d.canceled ? '<span class="tag danger">해제</span>' : d.isNew ? '<span class="new-dot">NEW</span>' : ''}</span>
+      <span class="ir-mid"><b class="num"><span class="tag ${d.type}">${TYPES[d.type]}</span> ${d.date.slice(2).replace(/-/g, '.')}${d.canceled ? ' <span class="tag danger">해제</span>' : d.isNew ? ' <span class="new-dot">NEW</span>' : ''}</b><small class="meta num">${m2(d.area)}㎡ · ${d.floor}층</small></span>
+      <span class="ir-right"><span class="price num ir-price">${d.type === 'monthly' ? won(d.deposit) : dealPrice(d)}</span>${d.type === 'monthly' ? `<small class="ir-rent num">월 ${Number(d.monthlyRent).toLocaleString()}만</small>` : ''}</span>
     </a>`;
   return `
     <div class="card inbox-card ${g.unread ? 'unread' : ''}">
@@ -623,6 +630,25 @@ async function viewSettings() {
       <div class="pref-note">소리·진동·팝업 설정은 다음에 오는 알림부터 적용돼요. <b>테스트 알림</b>으로 확인해 보세요.</div>
     </div>
 
+    <div class="section-title">알림 디자인</div>
+    <div class="card stack">
+      <div><span class="label">알림 색상</span>
+        <div class="swatches five">
+          <button class="swatch ${P.notiColor === 'app' ? 'active' : ''}" data-noticolor="app"><i style="background:conic-gradient(#2563eb,#059669,#db2777,#ea580c,#2563eb)"></i>앱 색상</button>
+          ${Object.entries(ACCENTS).map(([k, [l, , name]]) => `<button class="swatch ${P.notiColor === k ? 'active' : ''}" data-noticolor="${k}"><i style="background:${l}"></i>${name}</button>`).join('')}
+        </div>
+      </div>
+      <div><span class="label">알림 아이콘 (상단바에 표시)</span>
+        <div class="swatches">${Object.entries(NOTI_ICONS).map(([k, [name]]) => `<button class="swatch ${P.notiIcon === k ? 'active' : ''}" data-notiicon="${k}"><i class="icon-dot">${iconSvg(k, 16)}</i>${name}</button>`).join('')}</div>
+      </div>
+      <div><span class="label">제목 형식</span>${prefSeg('notiTitle', [['count', '건수 중심'], ['price', '가격 중심']])}</div>
+      <div><span class="label">내용 표시</span>${prefSeg('notiDetail', [['simple', '간단히 (한 줄)'], ['detail', '자세히 (목록)']])}</div>
+      <div><span class="label">잠금화면</span>${prefSeg('notiLockscreen', [['show', '내용 보이기'], ['hide', '내용 숨기기']])}</div>
+    </div>
+
+    <div class="section-title">알림 미리보기 <span class="meta" style="font-weight:400">· 설정을 바꾸면 바로 바뀌어요</span></div>
+    <div id="preview"></div>
+
     <div class="section-title">화면 디자인</div>
     <div class="card stack">
       <div><span class="label">테마</span>${prefSeg('theme', [['system', '휴대폰 설정'], ['light', '☀️ 밝게'], ['dark', '🌙 어둡게']])}</div>
@@ -631,6 +657,7 @@ async function viewSettings() {
       </div>
       <div><span class="label">글자 크기</span>${prefSeg('fontScale', [[85, '작게'], [100, '보통'], [115, '크게'], [130, '아주 크게']])}</div>
     </div>
+
 
     <details class="card" style="margin-top:20px" ${config.relayOnly ? 'hidden' : ''}>
       <summary><b>개인 API 키 발급 방법</b> <span class="meta">(휴대폰으로 가능)</span></summary>
@@ -680,6 +707,71 @@ async function viewSettings() {
     toast('개인 키를 삭제했어요. 중계 서버를 사용합니다');
     viewSettings();
   });
+  // ----- 미리보기 -----
+  const PATTERN_LABEL = { short: '짧게', long: '길게', double: '두 번', triple: '세 번' };
+  const PATTERN_MS = { short: [200], long: [700], double: [200, 150, 200], triple: [150, 100, 150, 100, 150] };
+  const $pv = $view.querySelector('#preview');
+  const renderPreview = () => {
+    const now = new Date();
+    const hhmm = `${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const color = (ACCENTS[P.notiColor === 'app' ? P.accent : P.notiColor] || ACCENTS.blue)[0];
+    const title = P.notiTitle === 'price'
+      ? '🏠 예시 래미안아파트 매매 32억 (84.94㎡·29층) 외 1건'
+      : '🏠 예시 래미안아파트 새 실거래 2건 (매매 1 · 전세 1)';
+    const lines = ['[매매] 84.94㎡ 29층 · 32억 · 11/10', '[전세] 59.98㎡ 12층 · 13억 5,000만 · 11/08'];
+    const head = (extra = '') => `<div class="pv-head"><span class="pv-icon" style="background:${color}">${iconSvg(P.notiIcon)}</span>
+      <span style="color:${color};font-weight:700">실거래 알리미</span><span class="meta">· 지금</span>${extra}</div>`;
+    const noti = (cls = '', expanded = P.notiDetail === 'detail') => `<div class="pv-noti ${cls}">
+      ${head(expanded ? '<span class="pv-expand">⌃</span>' : '<span class="pv-expand">⌄</span>')}
+      <b class="pv-title ${expanded ? '' : 'one'}">${title}</b>
+      <div class="pv-body num ${expanded ? '' : 'one'}">${expanded ? lines.join('<br>') : lines[0]}</div>
+    </div>`;
+    const statusbar = `<div class="pv-statusbar dark"><span>${hhmm} <span class="pv-sbicon">${iconSvg(P.notiIcon, 13)}</span></span><span>📶 🔋</span></div>`;
+    const flags = [
+      P.notiSound ? `🔊 ${esc(P.soundName)}` : '🔇 소리 없음',
+      P.notiVibrate ? `📳 진동 ${PATTERN_LABEL[P.vibratePattern] || ''}` : '📴 진동 없음',
+      P.notiPopup ? '💬 화면 위 팝업' : '🔕 팝업 없음',
+    ];
+    $pv.innerHTML = `
+      <div class="card stack">
+        <span class="label">① 상단바 — 새 거래가 오면 시계 옆에 아이콘이 생겨요</span>
+        <div class="pv-phone">${statusbar}<div class="pv-wall"></div></div>
+
+        <span class="label">② 상단바를 내렸을 때 (알림창)</span>
+        <div class="pv-phone">${statusbar}<div class="pv-shade"><div class="pv-qs">${'<i></i>'.repeat(5)}</div>${noti('flat')}</div></div>
+
+        <span class="label">③ 다른 앱 사용 중 (화면 위 팝업)</span>
+        ${P.notiPopup
+          ? `<div class="pv-phone">${statusbar}<div class="pv-screen popup">${noti('', false)}<div class="pv-applines"><i></i><i></i><i></i></div></div></div>`
+          : '<div class="pref-note">🔕 팝업이 꺼져 있어요. 화면 위에 뜨지 않고 상단바·알림창에만 표시돼요.</div>'}
+
+        <span class="label">④ 잠금화면</span>
+        <div class="pv-phone"><div class="pv-lock"><div class="pv-clock">${hhmm}</div>
+          ${P.notiLockscreen === 'hide'
+            ? `<div class="pv-noti flat">${head()}<b class="pv-title one">실거래 알리미</b><div class="pv-body one">새 실거래 알림이 있어요</div></div>`
+            : noti('flat', false)}
+        </div></div>
+
+        <div class="pv-flags">${flags.map((f) => `<span>${f}</span>`).join('')}</div>
+        ${P.quietEnabled ? `<div class="pref-note">🌙 ${esc(P.quietStart)} ~ ${esc(P.quietEnd)}에는 소리·진동 없이 조용히 와요</div>` : ''}
+        <div class="btn-row">
+          <button class="btn" id="pvSound" ${P.notiSound ? '' : 'disabled'}>▶ 알림음 듣기</button>
+          <button class="btn" id="pvVib" ${P.notiVibrate ? '' : 'disabled'}>📳 진동 느껴보기</button>
+          <button class="btn primary" id="pvTest">실제로 보내보기</button>
+        </div>
+      </div>`;
+    $pv.querySelector('#pvSound').onclick = () => api('/api/app/preview-sound', { method: 'POST' }).catch(() => toast('이 기기에서는 미리듣기를 할 수 없어요'));
+    $pv.querySelector('#pvVib').onclick = () => {
+      const ms = PATTERN_MS[P.vibratePattern] || [200];
+      if (!(navigator.vibrate && navigator.vibrate(ms))) toast('이 기기에서는 진동 미리보기를 할 수 없어요');
+    };
+    $pv.querySelector('#pvTest').onclick = async () => {
+      const r = await api('/api/push/test', { method: 'POST' }).catch((e) => ({ error: e.message }));
+      toast(r.devices ? '테스트 알림을 보냈어요. 상단바를 확인해 보세요' : r.error || '알림 권한이 없어요');
+    };
+  };
+  renderPreview();
+
   // ----- 알림 방법 · 화면 디자인 저장 -----
   const DESIGN = ['theme', 'accent', 'fontScale'];
   const syncDeps = () => $view.querySelectorAll('[data-dep]').forEach((el) => el.classList.toggle('disabled', !P[el.dataset.dep]));
@@ -687,6 +779,7 @@ async function viewSettings() {
     P[k] = v;
     if (DESIGN.includes(k)) applyAppearance({ ...prefs, [k]: v });
     syncDeps();
+    renderPreview();
     try {
       const r = await api('/api/settings', { method: 'POST', body: { prefs: { [k]: v } } });
       if (r.prefs) applyAppearance({ ...prefs, ...r.prefs });
@@ -703,11 +796,19 @@ async function viewSettings() {
     $view.querySelectorAll('[data-accent]').forEach((x) => x.classList.toggle('active', x === b));
     savePref('accent', b.dataset.accent);
   }));
+  $view.querySelectorAll('[data-noticolor]').forEach((b) => (b.onclick = () => {
+    $view.querySelectorAll('[data-noticolor]').forEach((x) => x.classList.toggle('active', x === b));
+    savePref('notiColor', b.dataset.noticolor);
+  }));
+  $view.querySelectorAll('[data-notiicon]').forEach((b) => (b.onclick = () => {
+    $view.querySelectorAll('[data-notiicon]').forEach((x) => x.classList.toggle('active', x === b));
+    savePref('notiIcon', b.dataset.notiicon);
+  }));
   $view.querySelectorAll('[data-time]').forEach((el) => (el.onchange = () => el.value && savePref(el.dataset.time, el.value)));
   $view.querySelector('#pickSound').onclick = async () => {
     try {
       const r = await api('/api/app/pick-sound', { method: 'POST' });
-      if (r.prefs) { Object.assign(P, r.prefs); $view.querySelector('#pickSound').textContent = `${r.prefs.soundName} ›`; }
+      if (r.prefs) { Object.assign(P, r.prefs); $view.querySelector('#pickSound').textContent = `${r.prefs.soundName} ›`; renderPreview(); }
     } catch (e) { toast(e.message); }
   };
   $view.querySelector('#interval').onchange = async (ev) => {

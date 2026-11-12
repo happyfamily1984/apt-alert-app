@@ -182,7 +182,7 @@ a.tag-chip { padding: 0 6px; }
 .chip small { font-size: 11px; opacity: .7; margin-left: 2px; }
 .inbox-card.unread { border-left: 3px solid var(--accent); }
 .inbox-rows { margin-top: 10px; border-top: 1px solid var(--line); }
-.inbox-row { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.inbox-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
 .inbox-row:last-child { border-bottom: 0; }
 .inbox-row.extra { display: none; }
 .inbox-card.expanded .inbox-row.extra { display: grid; }
@@ -230,3 +230,42 @@ a.tag-chip { padding: 0 6px; }
 .tag, .new-dot { white-space: nowrap; display: inline-block; }
 .deal .meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .time-row input { min-width: 0; width: 100%; } .time-row.pref-sub { padding-right: 0; }
+/* ----- 설정 미리보기 ----- */
+.pv-phone { border-radius: 18px; overflow: hidden; border: 1px solid var(--line); background: linear-gradient(160deg, #7a8597, #3d4656); }
+.pv-statusbar { display: flex; justify-content: space-between; color: #fff; font-size: 11px; font-weight: 700; padding: 5px 14px; }
+.pv-screen { padding: 12px 10px 10px; min-height: 150px; }
+.pv-screen.shade { background: rgba(20, 22, 28, .55); }
+.pv-noti { background: var(--surface); color: var(--text); border-radius: 14px; padding: 10px 12px; box-shadow: 0 6px 18px rgba(0,0,0,.25); }
+.pv-screen.shade .pv-noti { box-shadow: none; border-radius: 10px; }
+.pv-head { display: flex; align-items: center; gap: 6px; font-size: 11px; margin-bottom: 4px; }
+.pv-icon { width: 18px; height: 18px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; }
+.pv-title { display: block; font-size: 13px; line-height: 1.35; }
+.pv-body { font-size: 12px; color: var(--muted); margin-top: 3px; line-height: 1.45; }
+.pv-where { color: #fff; font-size: 11px; opacity: .85; margin-top: 8px; text-align: center; }
+.pv-flags { display: flex; flex-wrap: wrap; gap: 6px; }
+.pv-flags span { font-size: 12px; background: var(--surface-2); border-radius: 99px; padding: 4px 10px; }
+.pv-app { pointer-events: none; }
+.pv-app .inbox-card { box-shadow: none; }
+.btn:disabled { opacity: .4; }
+
+.ir-mid b { white-space: nowrap; }
+.ir-mid b .tag { font-size: 12px; padding: 0 6px; vertical-align: 1px; }
+.pv-sbicon { display: inline-flex; vertical-align: -2px; margin-left: 6px; }
+.pv-wall { background: linear-gradient(160deg, #8a96aa, #4b5568); color: #fff; font-size: 11px; padding: 18px 14px; opacity: .95; }
+.pv-shade { background: #1f232b; padding: 8px 10px 12px; }
+.pv-qs { display: flex; justify-content: space-around; padding: 4px 0 10px; }
+.pv-qs i { width: 26px; height: 26px; border-radius: 50%; background: #3a404c; display: block; }
+.pv-noti.flat { box-shadow: none; border-radius: 12px; }
+.pv-expand { margin-left: auto; color: var(--muted); font-size: 13px; }
+.pv-title.one, .pv-body.one { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pv-statusbar.dark { background: #15181e; }
+.pv-wall { height: 46px; padding: 0; }
+.icon-dot { background: var(--muted) !important; display: flex !important; align-items: center; justify-content: center; }
+.swatch.active .icon-dot { background: var(--accent) !important; }
+.pv-applines { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+.pv-applines i { display: block; height: 8px; border-radius: 4px; background: rgba(255,255,255,.35); }
+.pv-applines i:nth-child(2) { width: 70%; } .pv-applines i:nth-child(3) { width: 45%; }
+.pv-lock { background: linear-gradient(170deg, #2b3445, #11151c); padding: 14px 10px 12px; }
+.pv-clock { color: #fff; font-size: 34px; font-weight: 300; text-align: center; margin-bottom: 10px; letter-spacing: 1px; }
+.pv-lock .pv-noti { background: color-mix(in srgb, var(--surface) 92%, transparent); }
+.swatches.five { grid-template-columns: repeat(5, 1fr); gap: 8px; } .swatches.five .swatch { font-size: 11px; }
