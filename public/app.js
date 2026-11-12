@@ -734,18 +734,10 @@ async function viewSettings() {
     ];
     $pv.innerHTML = `
       <div class="card stack">
-        <span class="label">① 상단바 — 새 거래가 오면 시계 옆에 아이콘이 생겨요</span>
-        <div class="pv-phone">${statusbar}<div class="pv-wall"></div></div>
-
-        <span class="label">② 상단바를 내렸을 때 (알림창)</span>
+        <span class="label">① 상단바를 내렸을 때 (알림창)</span>
         <div class="pv-phone">${statusbar}<div class="pv-shade"><div class="pv-qs">${'<i></i>'.repeat(5)}</div>${noti('flat')}</div></div>
 
-        <span class="label">③ 다른 앱 사용 중 (화면 위 팝업)</span>
-        ${P.notiPopup
-          ? `<div class="pv-phone">${statusbar}<div class="pv-screen popup">${noti('', false)}<div class="pv-applines"><i></i><i></i><i></i></div></div></div>`
-          : '<div class="pref-note">🔕 팝업이 꺼져 있어요. 화면 위에 뜨지 않고 상단바·알림창에만 표시돼요.</div>'}
-
-        <span class="label">④ 잠금화면</span>
+        <span class="label">② 잠금화면</span>
         <div class="pv-phone"><div class="pv-lock"><div class="pv-clock">${hhmm}</div>
           ${P.notiLockscreen === 'hide'
             ? `<div class="pv-noti flat">${head()}<b class="pv-title one">실거래 알리미</b><div class="pv-body one">새 실거래 알림이 있어요</div></div>`
