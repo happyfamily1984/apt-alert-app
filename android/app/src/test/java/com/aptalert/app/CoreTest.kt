@@ -52,7 +52,10 @@ class CoreTest {
     // ----- 통합: 가짜 국토부 서버로 구독 → 폴링 → 알림 -----
     private class FakeServer {
         val trades = mutableListOf<String>()
+        val rents = mutableListOf<String>()
         var calls = 0
+        fun rent(day: Int, deposit: String, monthly: String, floor: Int) =
+            "<item><aptNm>테스트 아파트</aptNm><umdNm>반포동</umdNm><jibun>1</jibun><buildYear>2009</buildYear><dealYear>2026</dealYear><dealMonth>11</dealMonth><dealDay>$day</dealDay><deposit>$deposit</deposit><monthlyRent>$monthly</monthlyRent><excluUseAr>84.9329</excluUseAr><floor>$floor</floor></item>"
         fun item(day: Int, amount: String, floor: Int, canceled: Boolean = false) =
             "<item><aptNm>테스트 아파트</aptNm><umdNm>반포동</umdNm><jibun>1</jibun><buildYear>2009</buildYear><dealYear>2026</dealYear><dealMonth>11</dealMonth><dealDay>$day</dealDay><dealAmount>$amount</dealAmount><excluUseAr>84.9</excluUseAr><floor>$floor</floor><cdealType>${if (canceled) "O" else ""}</cdealType></item>"
         var lastHeaders: Map<String, String> = emptyMap()
@@ -63,8 +66,10 @@ class CoreTest {
                 if (headers["X-App-Token"] != "tok") return@HttpGet 403 to "{\"error\":\"중계 서버 접근 토큰이 맞지 않아요\"}"
             } else if (!url.contains("serviceKey=good")) return@HttpGet 401 to "Unauthorized"
             val ym = Regex("DEAL_YMD=(\\d+)").find(url)!!.groupValues[1]
-            val items = if ((url.contains("AptTrade") || url.contains("/molit/trade")) && ym == "202611") trades.joinToString("") else ""
-            200 to "<response><header><resultCode>000</resultCode><resultMsg>OK</resultMsg></header><body><items>$items</items><totalCount>${if (items.isEmpty()) 0 else trades.size}</totalCount></body></response>"
+            val isTrade = url.contains("AptTrade") || url.contains("/molit/trade")
+            val list = if (isTrade) trades else rents
+            val items = if (ym == "202611") list.joinToString("") else ""
+            200 to "<response><header><resultCode>000</resultCode><resultMsg>OK</resultMsg></header><body><items>$items</items><totalCount>${if (items.isEmpty()) 0 else list.size}</totalCount></body></response>"
         }
     }
 
@@ -145,6 +150,36 @@ class CoreTest {
         val del = call(c, "DELETE", "/api/subscriptions/${subs.getJSONObject(0).getString("id")}")
         assertTrue(del.getJSONObject("data").getBoolean("ok"))
         assertEquals(0, call(c, "GET", "/api/subscriptions").getJSONArray("data").length())
+    }
+
+    @Test fun mergedNotificationPerComplex() {
+        val s = FakeServer()
+        s.trades += s.item(3, "300,000", 5)
+        val c = core(s)
+        call(c, "POST", "/api/settings", """{"serviceKey":"good"}""")
+        val id = call(c, "GET", "/api/regions/11650/complexes").getJSONObject("data").getJSONArray("complexes").getJSONObject(0).getString("id")
+        for (t in listOf("trade", "jeonse", "monthly")) call(c, "POST", "/api/subscriptions", """{"lawdCd":"11650","complexId":"$id","type":"$t"}""")
+        shown.clear()
+
+        // 한 번의 확인에서 매매 1 + 전세 1 + 월세 1 → 휴대폰 알림 1개
+        s.trades += s.item(10, "310,000", 9)
+        s.rents += s.rent(9, "150,000", "0", 3)
+        s.rents += s.rent(11, "50,000", "320", 7)
+        val r = call(c, "POST", "/api/admin/poll").getJSONObject("data")
+        assertEquals(1, r.getInt("notificationsSent"))
+        assertEquals(1, shown.size)
+        val (title, body) = shown[0]
+        assertTrue(title, title.contains("새 실거래 3건") && title.contains("매매 1 · 전세 1 · 월세 1"))
+        // 최신 계약일 순, 유형 표시, 면적 소수 둘째 자리
+        val lines = body.lines()
+        assertTrue(lines[0], lines[0].startsWith("[월세]") && lines[0].contains("11/11"))
+        assertTrue(lines[1], lines[1].startsWith("[매매]") && lines[1].contains("11/10"))
+        assertTrue(lines[2], lines[2].startsWith("[전세]") && lines[2].contains("84.93㎡"))
+        // 알림함 항목에 거래 데이터와 단지명 저장
+        val n = call(c, "GET", "/api/notifications").getJSONObject("data").getJSONArray("notifications").getJSONObject(0)
+        assertEquals("테스트 아파트", n.getString("aptNm"))
+        assertEquals(3, n.getJSONArray("deals").length())
+        assertEquals("monthly", n.getString("type"))
     }
 
     @Test fun proxyMode() {

@@ -19,6 +19,8 @@ export function createAlerts({ store, molit, service, push, now = () => new Date
       lawdCd: sub?.lawdCd,
       complexId: sub?.complexId,
       type: sub?.type,
+      aptNm: sub?.aptNm,
+      umdNm: sub?.umdNm,
       kind, // 'recent' | 'new' | 'canceled'
       title,
       body,

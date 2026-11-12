@@ -54,7 +54,8 @@ function won(v) {
   return `${rest.toLocaleString()}만`;
 }
 const pyeong = (m2) => (m2 / 3.3058).toFixed(1);
-const dealPrice = (d) => (d.type === 'trade' ? won(d.price) : d.type === 'jeonse' ? won(d.deposit) : `${won(d.deposit)} / ${d.monthlyRent}`);
+const m2 = (a) => String(Math.round(Number(a) * 100) / 100); // 84.9329 → 84.93
+const dealPrice = (d) => (d.type === 'trade' ? won(d.price) : d.type === 'jeonse' ? won(d.deposit) : `${won(d.deposit)} / 월${Number(d.monthlyRent).toLocaleString()}`);
 function ago(iso) {
   const s = (Date.now() - new Date(iso)) / 1000;
   if (s < 60) return '방금';
@@ -293,7 +294,7 @@ function dealRow(d) {
   return `<div class="deal ${d.canceled ? 'canceled' : ''}">
     <div><b class="num">${d.date.slice(2).replace(/-/g, '.')}</b> ${tags.join(' ')}</div>
     <div class="price num" style="text-align:right">${dealPrice(d)}</div>
-    <div class="meta num">${d.area}㎡ (${pyeong(d.area)}평) · ${d.floor}층${d.dong ? ` · ${esc(d.dong)}동` : ''}</div>
+    <div class="meta num">${m2(d.area)}㎡ (${pyeong(d.area)}평) · ${d.floor}층${d.dong ? ` · ${esc(d.dong)}동` : ''}</div>
     <div class="meta num" style="text-align:right">${Math.round((d.type === 'trade' ? d.price : d.deposit) / pyeong(d.area)).toLocaleString()}만/평</div>
   </div>`;
 }
@@ -323,6 +324,7 @@ async function viewAlerts() {
   loading();
   const [subs, { notifications }] = await Promise.all([api('/api/subscriptions'), api('/api/notifications')]);
   if (isApp) config = await api('/api/config');
+  const inbox = groupInbox(notifications, subs);
   // 같은 단지의 매매·전세·월세 구독을 카드 하나로 묶음
   const groups = [];
   for (const s of subs) {
@@ -364,11 +366,7 @@ async function viewAlerts() {
     ${isApp && subs.length ? `<button class="btn" id="pollNow" style="margin-top:12px;width:100%">🔄 지금 새 실거래 확인</button>
       <div class="meta" style="margin:6px 4px 0">마지막 확인: ${config.lastPollAt ? ago(config.lastPollAt) : '아직 없음'} · ${intervalLabel(config.pollIntervalMinutes)}마다 자동 확인</div>` : ''}
     <div class="section-title">알림함</div>
-    <div class="list">${notifications.length ? notifications.map((n) => `
-      <a class="card notif ${n.read ? '' : 'unread'}" href="${n.complexId ? `#/complex/${n.lawdCd}/${n.complexId}?type=${n.type}` : '#/alerts'}">
-        <div class="card-row"><b>${esc(n.title)}</b><span class="meta" style="white-space:nowrap">${ago(n.createdAt)}</span></div>
-        <div class="meta num notif-body">${esc(n.body)}</div>
-      </a>`).join('') : '<div class="card meta">받은 알림이 없습니다</div>'}
+    <div class="list">${inbox.length ? inbox.map(inboxCard).join('') : '<div class="card meta">받은 알림이 없습니다</div>'}
     </div>`;
 
   $view.querySelector('#enablePush')?.addEventListener('click', async () => {
@@ -395,6 +393,10 @@ async function viewAlerts() {
     } catch (e) { toast(e.message); }
     viewAlerts();
   });
+  $view.querySelectorAll('[data-more]').forEach((b) => (b.onclick = () => {
+    b.closest('.inbox-card').classList.add('expanded');
+    b.remove();
+  }));
   $view.querySelectorAll('[data-unsub]').forEach((b) => (b.onclick = async () => {
     await api(`/api/subscriptions/${b.dataset.unsub}`, { method: 'DELETE' });
     toast(`${b.dataset.label} 알림을 해제했습니다`);
@@ -410,6 +412,59 @@ async function viewAlerts() {
     await api('/api/notifications/read-all', { method: 'POST' });
     refreshUnread();
   }
+}
+
+// ---------- 알림함: 단지별로 묶고 매매·전세·월세 거래를 최신순으로 ----------
+function groupInbox(notifications, subs) {
+  const groups = new Map();
+  for (const n of notifications) {
+    const k = n.complexId ? `${n.lawdCd}:${n.complexId}` : `n:${n.id}`;
+    if (!groups.has(k)) groups.set(k, { key: k, lawdCd: n.lawdCd, complexId: n.complexId, list: [] });
+    groups.get(k).list.push(n);
+  }
+  return [...groups.values()].map((g) => {
+    const sub = subs.find((s) => s.complexId === g.complexId && s.lawdCd === g.lawdCd);
+    const first = g.list[0]; // 최신 알림 (서버가 최신순으로 줌)
+    g.aptNm = first.aptNm || sub?.aptNm || first.title.replace(/^\S+\s/, '').replace(/\s(매매|전세|월세).*$|\s새 실거래.*$|\s거래 해제.*$/, '');
+    g.place = sub ? `${sub.region?.fullName || ''} ${sub.umdNm}` : first.umdNm || '';
+    g.latest = first.createdAt;
+    g.unread = g.list.some((n) => !n.read);
+    // 거래 합치기: 같은 거래는 한 번만, 해제 정보는 우선
+    const rows = new Map();
+    for (const n of [...g.list].reverse()) {
+      for (const d of n.deals || []) {
+        const prev = rows.get(d.key);
+        rows.set(d.key, { ...d, canceled: d.canceled || prev?.canceled, isNew: Boolean(prev?.isNew || n.kind === 'new') });
+      }
+    }
+    g.rows = [...rows.values()].sort((a, b) => (a.date === b.date ? b.floor - a.floor : a.date < b.date ? 1 : -1));
+    g.textOnly = g.rows.length ? null : first.body; // 거래 정보가 없는 예전 알림/거래 없음 안내
+    g.title = first.title;
+    return g;
+  });
+}
+
+const INBOX_PREVIEW = 6;
+function inboxCard(g) {
+  const counts = Object.entries(TYPES).map(([t, l]) => [t, l, g.rows.filter((r) => r.type === t).length]).filter((x) => x[2]);
+  const href = g.complexId ? `#/complex/${g.lawdCd}/${g.complexId}?type=${g.rows[0]?.type || 'trade'}` : '#/alerts';
+  const row = (d) => `
+    <a class="inbox-row ${d.canceled ? 'canceled' : ''}" href="#/complex/${g.lawdCd}/${g.complexId}?type=${d.type}">
+      <span class="tag ${d.type}">${TYPES[d.type]}</span>
+      <span class="ir-mid"><b class="num">${d.date.slice(2).replace(/-/g, '.')}</b><small class="meta num">${m2(d.area)}㎡ · ${d.floor}층</small></span>
+      <span class="ir-right"><span class="price num ir-price">${d.type === 'monthly' ? won(d.deposit) : dealPrice(d)}</span>${d.type === 'monthly' ? `<small class="ir-rent num">월 ${Number(d.monthlyRent).toLocaleString()}만</small>` : ''}${d.canceled ? '<span class="tag danger">해제</span>' : d.isNew ? '<span class="new-dot">NEW</span>' : ''}</span>
+    </a>`;
+  return `
+    <div class="card inbox-card ${g.unread ? 'unread' : ''}">
+      <a class="card-row" href="${href}">
+        <h3>${esc(g.aptNm)}</h3><span class="meta" style="white-space:nowrap">${ago(g.latest)}</span>
+      </a>
+      ${g.place.trim() ? `<div class="meta">${esc(g.place)}</div>` : ''}
+      ${counts.length ? `<div class="counts">${counts.map(([t, l, c]) => `<span class="tag ${t}">${l} ${c}</span>`).join('')}<span class="meta" style="margin-left:auto">최신순</span></div>` : ''}
+      ${g.rows.length ? `<div class="inbox-rows">${g.rows.map((d, i) => (i < INBOX_PREVIEW ? row(d) : row(d).replace('class="inbox-row', 'class="inbox-row extra'))).join('')}</div>
+        ${g.rows.length > INBOX_PREVIEW ? `<button class="btn small block" data-more style="margin-top:8px">더 보기 (${g.rows.length - INBOX_PREVIEW}건)</button>` : ''}`
+        : `<div class="meta notif-body" style="margin-top:6px">${esc(g.textOnly || '')}</div>`}
+    </div>`;
 }
 
 // ---------- 화면: 설정 (앱 전용) ----------

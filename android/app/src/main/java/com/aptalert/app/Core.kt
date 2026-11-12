@@ -83,11 +83,12 @@ object Fmt {
         else -> "${manwon(d.deposit)} / 월 ${comma(d.monthlyRent)}만"
     }
 
-    fun area(a: Double) = if (a == Math.floor(a)) a.toLong().toString() else a.toString()
+    /** 84.9329 → "84.93" (국토부 원자료는 소수 넷째 자리까지 옴) */
+    fun area(a: Double): String = java.math.BigDecimal(a).setScale(2, java.math.RoundingMode.HALF_UP).stripTrailingZeros().toPlainString()
 
     fun line(d: Deal): String {
         val md = d.date.substring(5).replace('-', '/')
-        return "${area(d.area)}㎡ ${d.floor}층 · ${price(d)} · $md 계약${if (d.canceled) " (해제)" else ""}"
+        return "[${Molit.TYPES[d.type]}] ${area(d.area)}㎡ ${d.floor}층 · ${price(d)} · $md${if (d.canceled) " (해제)" else ""}"
     }
 }
 
@@ -163,22 +164,33 @@ class Alerts(
 
     private fun nowIso() = Instant.ofEpochMilli(clock()).toString()
 
+    /** 최신 계약일 순으로 정렬된 거래 목록 → 알림 본문 */
+    private fun sorted(deals: List<Deal>) = deals.sortedWith(compareByDescending<Deal> { it.date }.thenByDescending { it.floor })
+
     private fun body(deals: List<Deal>): String {
-        val lines = deals.take(4).map(Fmt::line).toMutableList()
-        if (deals.size > 4) lines.add("외 ${deals.size - 4}건")
+        val s = sorted(deals)
+        val lines = s.take(5).map(Fmt::line).toMutableList()
+        if (s.size > 5) lines.add("외 ${s.size - 5}건")
         return lines.joinToString("\n")
     }
 
-    private fun notify(sub: JSONObject, title: String, body: String, kind: String) {
+    /** "매매 2 · 전세 1" */
+    private fun typeSummary(deals: List<Deal>) =
+        Molit.TYPES.entries.mapNotNull { (t, l) -> deals.count { it.type == t }.takeIf { it > 0 }?.let { "$l $it" } }.joinToString(" · ")
+
+    private fun notify(sub: JSONObject, title: String, body: String, kind: String, deals: List<Deal> = emptyList(), type: String = sub.getString("type")) {
         val n = JSONObject().put("id", UUID.randomUUID().toString()).put("subscriptionId", sub.getString("id"))
-            .put("lawdCd", sub.getString("lawdCd")).put("complexId", sub.getString("complexId")).put("type", sub.getString("type"))
+            .put("lawdCd", sub.getString("lawdCd")).put("complexId", sub.getString("complexId")).put("type", type)
+            .put("aptNm", sub.optString("aptNm")).put("umdNm", sub.optString("umdNm"))
             .put("kind", kind).put("title", title).put("body", body).put("createdAt", nowIso()).put("read", false)
+            .put("deals", JSONArray(sorted(deals).take(30).map { it.toJson() }))
         val list = store.notifications
         list.put(n)
         while (list.length() > MAX_NOTIFICATIONS) list.remove(0)
         store.save()
-        val hash = "#/complex/${sub.getString("lawdCd")}/${sub.getString("complexId")}?type=${sub.getString("type")}"
-        notifier.show((sub.getString("id").hashCode() xor kind.hashCode()), title, body, hash)
+        val hash = "#/complex/${sub.getString("lawdCd")}/${sub.getString("complexId")}?type=$type"
+        // 같은 단지는 휴대폰 알림도 하나로 (새 알림이 이전 알림을 대체)
+        notifier.show("${sub.getString("lawdCd")}:${sub.getString("complexId")}".hashCode(), title, body, hash)
     }
 
     private fun seenFor(api: String, lawdCd: String): JSONObject? = store.seen.optJSONObject("$api:$lawdCd")
@@ -223,6 +235,7 @@ class Alerts(
             sub, "🔔 $label 알림 시작",
             if (recent.isNotEmpty()) "최근 한 달 실거래 ${recent.size}건\n${body(recent)}" else "최근 한 달간 신고된 실거래가 없습니다. 새 거래가 신고되면 알려드릴게요.",
             "recent",
+            recent,
         )
         return sub to recent.size
     }
@@ -249,6 +262,9 @@ class Alerts(
         val yms = Molit.recentYms(POLL_MONTHS, molit.today())
         var sent = 0
         val errors = mutableListOf<Pair<String, String>>()
+        // 단지별로 모아서(매매·전세·월세 섞어) 알림 1개로 보냄
+        data class Bucket(val sub: JSONObject, val fresh: MutableList<Deal> = mutableListOf(), val canceled: MutableList<Deal> = mutableListOf())
+        val buckets = LinkedHashMap<String, Bucket>()
 
         for ((g, gsubs) in groups) {
             val (api, lawdCd) = g.split(":")
@@ -281,19 +297,25 @@ class Alerts(
                     val skip = s.optJSONArray("skipKeys")?.let { a -> (0 until a.length()).map { a.getString(it) }.toSet() } ?: emptySet()
                     s.remove("skipKeys")
                     val type = s.getString("type")
-                    val label = "${s.getString("aptNm")} ${Molit.TYPES[type]}"
-                    val mine = fresh.filter { it.complexId == s.getString("complexId") && it.type == type && it.key !in skip }
-                    if (mine.isNotEmpty()) {
-                        notify(s, "🏠 $label 새 실거래 ${mine.size}건", body(mine), "new"); sent++
-                    }
-                    val mineC = canceled.filter { it.complexId == s.getString("complexId") && it.type == type }
-                    if (mineC.isNotEmpty()) {
-                        notify(s, "⚠️ $label 거래 해제 ${mineC.size}건", body(mineC), "canceled"); sent++
-                    }
+                    val b = buckets.getOrPut("${s.getString("lawdCd")}:${s.getString("complexId")}") { Bucket(s) }
+                    b.fresh += fresh.filter { it.complexId == s.getString("complexId") && it.type == type && it.key !in skip }
+                    b.canceled += canceled.filter { it.complexId == s.getString("complexId") && it.type == type }
                 }
             } catch (e: Exception) {
                 errors.add(g to (e.message ?: e.javaClass.simpleName))
             }
+        }
+        for (b in buckets.values) {
+            if (b.fresh.isEmpty() && b.canceled.isEmpty()) continue
+            val apt = b.sub.getString("aptNm")
+            val title = when {
+                b.fresh.isNotEmpty() && b.canceled.isNotEmpty() -> "🏠 $apt 새 실거래 ${b.fresh.size}건 · 해제 ${b.canceled.size}건"
+                b.fresh.isNotEmpty() -> "🏠 $apt 새 실거래 ${b.fresh.size}건 (${typeSummary(b.fresh)})"
+                else -> "⚠️ $apt 거래 해제 ${b.canceled.size}건"
+            }
+            val all = b.fresh + b.canceled
+            notify(b.sub, title, body(all), if (b.fresh.isNotEmpty()) "new" else "canceled", all, sorted(all).first().type)
+            sent++
         }
         val keys = store.seen.keys().asSequence().toList()
         for (k in keys) if (k !in groups) store.seen.remove(k)
