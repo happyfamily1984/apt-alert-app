@@ -146,3 +146,21 @@ a.card:active { background: var(--surface-2); }
   opacity: 0; pointer-events: none; transition: .2s; max-width: calc(100% - 32px); z-index: 20;
 }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
+.tabbar a[hidden] { display: none; }
+
+.field { display: block; margin-bottom: 12px; }
+.field span { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+.field input, .field select {
+  width: 100%; border: 1px solid var(--line); background: var(--surface); color: var(--text);
+  border-radius: 10px; padding: 11px 12px; font-size: 15px; outline: none;
+}
+.field input:focus, .field select:focus { border-color: var(--accent); }
+.btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn-row .btn { flex: 1 1 28%; white-space: nowrap; font-size: 13px; padding: 9px 4px; }
+.btn.block { width: 100%; padding: 12px; }
+.banner { display: block; background: var(--accent-soft); color: var(--accent); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 16px; font-weight: 600; }
+.guide { margin: 0; padding-left: 20px; }
+.guide li { margin-bottom: 10px; }
+.guide a, .link { color: var(--accent); text-decoration: underline; }
+.ok { color: var(--jeonse); }
+.stack > * + * { margin-top: 12px; }

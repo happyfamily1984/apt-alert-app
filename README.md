@@ -5,6 +5,16 @@
 
 데이터: 국토교통부 실거래가 OpenAPI (공공데이터포털)
 
+## 📱 안드로이드 앱 (PC·서버 없이 사용)
+
+- **APK 다운로드**: [`release/apt-alert-1.0.0.apk`](release/apt-alert-1.0.0.apk) (또는 Releases)
+- **설치·API 키·알림 설정 안내**: [docs/사용설명서.md](docs/사용설명서.md)
+- 휴대폰이 직접 국토부 API를 호출하고, WorkManager로 백그라운드에서 주기적으로 새 거래를 확인해 알림을 띄웁니다. 서버·비용 없음.
+- 소스: `android/` (Kotlin, WebView에 `public/` 웹 UI를 그대로 탑재)
+- 빌드: `cd android && ./gradlew assembleRelease` 또는 GitHub Actions(`.github/workflows/android.yml`)
+
+## 🌐 웹 버전 (서버 배포용, 아이폰 등)
+
 ## 화면 흐름
 
 1. **단지 찾기** – 시·도 → 시·군·구 선택 (최근 본 지역 기억)
@@ -53,7 +63,9 @@ server/
   alerts.js    구독, 신규/해제 거래 감지, 알림 생성
   push.js      Web Push(VAPID)
   store.js     JSON 파일 저장소 (data/db.json)
-  regions.js   시군구 코드(LAWD_CD) 목록
+  regions.js   시군구 코드 로더 (shared/regions.json)
+shared/        시군구 코드 목록 (서버·앱 공용)
+android/       안드로이드 앱 (Kotlin: 국토부 API·알림·백그라운드 확인 / WebView UI)
 public/        PWA 프런트엔드 (index.html, app.js, style.css, sw.js)
 test/          node:test 단위 테스트 (+ 실제 응답 형태 XML 픽스처)
 ```
@@ -71,5 +83,5 @@ test/          node:test 단위 테스트 (+ 실제 응답 형태 XML 픽스처)
 
 ## 참고 / 한계
 - 단지 식별은 `시군구 + 법정동 + 지번 + 단지명`(공백 제거) 기준입니다. 최근 N개월 거래가 없는 단지는 목록에 나오지 않습니다.
-- 행정구역 개편(2026 인천 제물포·영종·검단구, 화성시 일반구 등)은 국토부 API 반영 코드를 확인해 `server/regions.js`에 추가하세요.
+- 행정구역 개편(2026 인천 제물포·영종·검단구, 화성시 일반구 등)은 국토부 API 반영 코드를 확인해 `shared/regions.json`에 추가하세요.
 - 저장소는 JSON 파일이라 소규모(개인/가족) 용도입니다. 사용자가 많아지면 DB로 교체하세요.

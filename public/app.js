@@ -12,7 +12,29 @@ const store = {
 let userId = store.get('userId');
 if (!userId) { userId = crypto.randomUUID(); store.set('userId', userId); }
 
+// 안드로이드 앱 안에서는 서버 대신 네이티브 브리지(AndroidBridge)로 같은 API를 호출
+const bridge = window.AndroidBridge;
+const isApp = Boolean(bridge);
+const pendingCalls = new Map();
+let callSeq = 0;
+window.__bridgeResolve = (id, json) => {
+  const p = pendingCalls.get(id);
+  if (!p) return;
+  pendingCalls.delete(id);
+  let r;
+  try { r = JSON.parse(json); } catch { r = { status: 500, data: { error: '응답 오류' } }; }
+  if (r.status >= 400) p.reject(new Error(r.data?.error || `요청 실패 (${r.status})`));
+  else p.resolve(r.data);
+};
+
 async function api(path, opts = {}) {
+  if (isApp) {
+    return new Promise((resolve, reject) => {
+      const id = ++callSeq;
+      pendingCalls.set(id, { resolve, reject });
+      bridge.request(id, opts.method || 'GET', path, opts.body ? JSON.stringify(opts.body) : '');
+    });
+  }
   const res = await fetch(path, {
     ...opts,
     headers: { 'Content-Type': 'application/json', 'X-User-Id': userId, ...(opts.headers || {}) },
@@ -49,7 +71,8 @@ function toast(msg) {
   toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
 }
 const loading = () => { $view.innerHTML = '<div class="spinner"></div>'; };
-const showError = (e) => { $view.innerHTML = `<div class="error">⚠️ ${esc(e.message)}</div>`; };
+const errorHtml = (e) => `<div class="error">⚠️ ${esc(e.message)}${isApp && /키/.test(e.message) ? '<br><br><a class="btn primary" href="#/settings">⚙️ API 키 설정하러 가기</a>' : ''}</div>`;
+const showError = (e) => { $view.innerHTML = errorHtml(e); };
 
 function setHeader(title, back) {
   $title.textContent = title;
@@ -69,6 +92,7 @@ function b64ToBytes(b64) {
 }
 
 async function ensurePush() {
+  if (isApp) return (await api('/api/push/subscribe', { method: 'POST' })).granted;
   if (!pushSupported()) return false;
   const perm = Notification.permission === 'default' ? await Notification.requestPermission() : Notification.permission;
   if (perm !== 'granted') return false;
@@ -99,6 +123,7 @@ async function viewHome() {
   const render = (selected) => {
     const r = regionsCache.find((x) => x.sido === selected) || regionsCache[0];
     $view.innerHTML = `
+      ${isApp && !config.hasKey ? '<a class="banner" href="#/settings">👉 먼저 국토교통부 API 키를 설정해 주세요 (무료, 휴대폰으로 5분)</a>' : ''}
       ${recent.length ? `<div class="section-title">최근 본 지역</div>
         <div class="chips">${recent.map((x) => `<a class="chip" href="#/region/${x.code}">${esc(x.name)}</a>`).join('')}</div>` : ''}
       <div class="section-title">시·도</div>
@@ -227,7 +252,7 @@ async function viewComplex(lawd, id, params) {
       area = 'all';
       draw();
     } catch (e) {
-      $body.innerHTML = `<div class="error">⚠️ ${esc(e.message)}</div>`;
+      $body.innerHTML = errorHtml(e);
     }
   };
   $view.querySelectorAll('[data-type]').forEach((b) => (b.onclick = () => {
@@ -275,10 +300,13 @@ async function viewAlerts() {
   setHeader('내 알림');
   loading();
   const [subs, { notifications }] = await Promise.all([api('/api/subscriptions'), api('/api/notifications')]);
-  const perm = pushSupported() ? Notification.permission : 'unsupported';
+  if (isApp) config = await api('/api/config');
+  const perm = isApp ? config.notifyPermission : pushSupported() ? Notification.permission : 'unsupported';
   const pushCard = {
     granted: '<div class="card-row"><span>✅ 푸시 알림이 켜져 있어요</span><button class="btn small" id="testPush">테스트</button></div>',
-    denied: '<div>🚫 브라우저에서 알림이 차단되어 있어요. 사이트 설정에서 알림을 허용해 주세요.</div>',
+    denied: isApp
+      ? '<div class="card-row"><span>🚫 알림이 꺼져 있어요</span><button class="btn primary small" id="openNotiSettings">설정 열기</button></div>'
+      : '<div>🚫 브라우저에서 알림이 차단되어 있어요. 사이트 설정에서 알림을 허용해 주세요.</div>',
     default: '<div class="card-row"><span>푸시 알림을 켜면 새 실거래를 바로 받아요</span><button class="btn primary small" id="enablePush">켜기</button></div>',
     unsupported: '<div class="meta">이 브라우저는 푸시를 지원하지 않아요. (iPhone은 공유 → 홈 화면에 추가 후 사용) 알림은 아래 알림함에 쌓입니다.</div>',
   }[perm];
@@ -296,6 +324,8 @@ async function viewAlerts() {
       </div>`).join('') : '<div class="card meta">아직 알림 받는 단지가 없어요. 단지를 찾아 🔔 버튼을 눌러보세요.</div>'}
     </div>
     ${config.demo && subs.length ? '<button class="btn" id="demoPoll" style="margin-top:12px;width:100%">🧪 데모: 새 실거래 발생시키기</button>' : ''}
+    ${isApp && subs.length ? `<button class="btn" id="pollNow" style="margin-top:12px;width:100%">🔄 지금 새 실거래 확인</button>
+      <div class="meta" style="margin:6px 4px 0">마지막 확인: ${config.lastPollAt ? ago(config.lastPollAt) : '아직 없음'} · ${intervalLabel(config.pollIntervalMinutes)}마다 자동 확인</div>` : ''}
     <div class="section-title">알림함</div>
     <div class="list">${notifications.length ? notifications.map((n) => `
       <a class="card notif ${n.read ? '' : 'unread'}" href="${n.complexId ? `#/complex/${n.lawdCd}/${n.complexId}?type=${n.type}` : '#/alerts'}">
@@ -308,6 +338,7 @@ async function viewAlerts() {
     toast((await ensurePush().catch(() => false)) ? '푸시 알림을 켰어요' : '알림 권한을 얻지 못했어요');
     viewAlerts();
   });
+  $view.querySelector('#openNotiSettings')?.addEventListener('click', () => api('/api/app/open-notification-settings', { method: 'POST' }));
   $view.querySelector('#testPush')?.addEventListener('click', async () => {
     await ensurePush().catch(() => false);
     const r = await api('/api/push/test', { method: 'POST' });
@@ -316,6 +347,15 @@ async function viewAlerts() {
   $view.querySelector('#demoPoll')?.addEventListener('click', async () => {
     const r = await api('/api/admin/poll?inject=1', { method: 'POST' });
     toast(`새 거래 알림 ${r.notificationsSent}건 발송`);
+    viewAlerts();
+  });
+  $view.querySelector('#pollNow')?.addEventListener('click', async (ev) => {
+    ev.target.disabled = true;
+    ev.target.textContent = '확인 중…';
+    try {
+      const r = await api('/api/admin/poll', { method: 'POST' });
+      toast(r.errors?.length ? `오류: ${r.errors[0].error}` : r.notificationsSent ? `새 거래 알림 ${r.notificationsSent}건` : '새로 신고된 거래가 없어요');
+    } catch (e) { toast(e.message); }
     viewAlerts();
   });
   $view.querySelectorAll('[data-unsub]').forEach((b) => (b.onclick = async () => {
@@ -329,17 +369,101 @@ async function viewAlerts() {
   }
 }
 
+// ---------- 화면: 설정 (앱 전용) ----------
+const INTERVALS = [30, 60, 180, 360, 720, 1440];
+function intervalLabel(m) {
+  if (!m) return '';
+  return m < 60 ? `${m}분` : m % 1440 === 0 ? `${m / 1440}일` : `${m / 60}시간`;
+}
+
+async function viewSettings() {
+  setHeader('설정');
+  loading();
+  const st = await api('/api/settings');
+  config = await api('/api/config');
+  const permText = { granted: '<span class="ok">✅ 켜짐</span>', denied: '🚫 꺼짐', default: '아직 허용 안 함' }[config.notifyPermission] || '-';
+  $view.innerHTML = `
+    <div class="section-title">국토교통부 API 키</div>
+    <div class="card stack">
+      <div class="meta" id="keyStatus">${st.serviceKeySet ? `<span class="ok">✅ 저장됨</span> (${esc(st.serviceKeyMasked)})` : '❗ 아직 키가 없어요. 아래 안내대로 무료로 발급받아 붙여넣으세요.'}</div>
+      <label class="field"><span>일반 인증키 (Encoding 또는 Decoding 아무거나)</span>
+        <input id="keyInput" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="발급받은 인증키 붙여넣기" /></label>
+      <button class="btn primary block" id="saveKey">저장하고 연결 테스트</button>
+      <div id="keyResult" class="meta"></div>
+    </div>
+
+    <div class="section-title">알림</div>
+    <div class="card stack">
+      <div class="card-row"><span>알림 권한</span><span>${permText}</span></div>
+      <div class="btn-row">
+        <button class="btn" id="askPerm">알림 허용</button>
+        <button class="btn" id="notiSettings">알림 설정</button>
+        <button class="btn" id="testNoti">테스트 알림</button>
+      </div>
+      <label class="field"><span>새 실거래 자동 확인 주기</span>
+        <select id="interval">${INTERVALS.map((m) => `<option value="${m}" ${m === st.pollIntervalMinutes ? 'selected' : ''}>${intervalLabel(m)}마다</option>`).join('')}</select></label>
+      <div class="meta">국토부 데이터는 보통 하루 한 번 갱신돼요. 3시간이면 충분하고, 짧을수록 배터리·API 호출이 늘어요.</div>
+      <button class="btn block" id="battery">🔋 배터리 최적화 해제 (알림이 늦게 올 때)</button>
+    </div>
+
+    <div class="section-title">API 키 발급 방법 (휴대폰으로 가능)</div>
+    <div class="card">
+      <ol class="guide">
+        <li><a class="link" href="https://www.data.go.kr" target="_blank" rel="noopener">공공데이터포털(data.go.kr)</a>에 회원가입 후 로그인</li>
+        <li>검색창에 <b>아파트 매매 실거래가</b> 검색 → <b>「국토교통부_아파트 매매 실거래가 자료」</b> → <b>활용신청</b> (활용목적: 개인 참고용, 자동 승인)</li>
+        <li>같은 방법으로 <b>「국토교통부_아파트 전월세 실거래가 자료」</b>도 <b>활용신청</b> (전세·월세용, 꼭 둘 다!)</li>
+        <li>마이페이지 → <b>개발계정</b> → 신청한 API 클릭 → <b>일반 인증키</b>를 길게 눌러 복사</li>
+        <li>위 입력칸에 붙여넣고 <b>저장하고 연결 테스트</b> → ✅ 나오면 끝!</li>
+      </ol>
+      <p class="meta" style="margin:8px 0 0">승인 직후에는 키가 활성화되기까지 1~2시간 걸릴 수 있어요. 테스트가 실패하면 잠시 후 다시 해보세요.</p>
+    </div>
+    <p class="meta" style="margin:16px 4px">앱 버전 ${esc(config.appVersion || '')} · 데이터 출처: 국토교통부 실거래가 공개시스템</p>`;
+
+  const $res = $view.querySelector('#keyResult');
+  $view.querySelector('#saveKey').onclick = async (ev) => {
+    const key = $view.querySelector('#keyInput').value.trim();
+    if (!key && !st.serviceKeySet) return toast('인증키를 붙여넣어 주세요');
+    ev.target.disabled = true;
+    $res.textContent = '연결 테스트 중…';
+    try {
+      const r = await api('/api/settings/test', { method: 'POST', body: { serviceKey: key || undefined } });
+      if (key) await api('/api/settings', { method: 'POST', body: { serviceKey: key } });
+      $res.innerHTML = `<span class="ok">✅ 연결 성공!</span> 매매 ${r.trade}건 · 전월세 ${r.rent}건 확인 (서울 강남구 지난달)`;
+      toast('API 키가 저장되었어요');
+      config.hasKey = true;
+      if (key) $view.querySelector('#keyStatus').innerHTML = '<span class="ok">✅ 저장됨</span>';
+    } catch (e) {
+      $res.innerHTML = `<span style="color:var(--danger)">❌ ${esc(e.message)}</span>`;
+    } finally {
+      ev.target.disabled = false;
+    }
+  };
+  $view.querySelector('#interval').onchange = async (ev) => {
+    await api('/api/settings', { method: 'POST', body: { pollIntervalMinutes: Number(ev.target.value) } });
+    toast(`${intervalLabel(Number(ev.target.value))}마다 확인할게요`);
+  };
+  $view.querySelector('#askPerm').onclick = async () => { toast((await ensurePush()) ? '알림이 허용되었어요' : '알림이 허용되지 않았어요'); viewSettings(); };
+  $view.querySelector('#notiSettings').onclick = () => api('/api/app/open-notification-settings', { method: 'POST' });
+  $view.querySelector('#battery').onclick = () => api('/api/app/open-battery-settings', { method: 'POST' });
+  $view.querySelector('#testNoti').onclick = async () => {
+    const r = await api('/api/push/test', { method: 'POST' });
+    toast(r.devices ? '테스트 알림을 보냈어요' : '알림 권한이 없어요');
+  };
+}
+
 // ---------- 라우터 ----------
 async function route() {
   const [path, query] = (location.hash.slice(1) || '/').split('?');
   const parts = path.split('/').filter(Boolean);
   const params = new URLSearchParams(query);
-  document.querySelectorAll('.tabbar a').forEach((a) => a.classList.toggle('active', a.dataset.tab === (parts[0] === 'alerts' ? 'alerts' : 'search')));
+  const tab = ['alerts', 'settings'].includes(parts[0]) ? parts[0] : 'search';
+  document.querySelectorAll('.tabbar a').forEach((a) => a.classList.toggle('active', a.dataset.tab === tab));
   window.scrollTo(0, 0);
   try {
     if (parts[0] === 'region' && parts[1]) await viewRegion(parts[1]);
     else if (parts[0] === 'complex' && parts[2]) await viewComplex(parts[1], parts[2], params);
     else if (parts[0] === 'alerts') await viewAlerts();
+    else if (parts[0] === 'settings' && isApp) await viewSettings();
     else await viewHome();
   } catch (e) {
     showError(e);
@@ -347,7 +471,9 @@ async function route() {
 }
 
 (async function init() {
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+  if (!isApp && 'serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+  document.getElementById('settingsTab').hidden = !isApp;
+  window.__navigate = (hash) => { location.hash = hash; };
   try {
     config = await api('/api/config');
     document.getElementById('demoBadge').hidden = !config.demo;
