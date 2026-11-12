@@ -40,7 +40,7 @@ export function createAlerts({ store, molit, service, push, now = () => new Date
       title,
       body,
       tag: sub ? `sub-${sub.id}` : undefined,
-      url: sub ? `/#/complex/${sub.lawdCd}/${sub.complexId}?type=${sub.type}` : '/#/alerts',
+      url: sub ? `/#/complex/${sub.lawdCd}/${sub.complexId}?type=${sub.type}&n=${n.id}` : '/#/alerts',
     });
     return n;
   }

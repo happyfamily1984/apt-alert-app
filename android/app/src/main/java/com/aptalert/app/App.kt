@@ -8,6 +8,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.AudioAttributes
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
@@ -22,6 +23,8 @@ import androidx.work.WorkManager
 import androidx.work.Worker
 import androidx.work.WorkerParameters
 import java.util.concurrent.TimeUnit
+import java.time.LocalTime
+import org.json.JSONObject
 
 class App : Application() {
     lateinit var core: Core
@@ -35,7 +38,7 @@ class App : Application() {
             defaultProxyUrl = BuildConfig.PROXY_URL, proxyToken = BuildConfig.PROXY_TOKEN,
             relayOnly = BuildConfig.PROXY_URL.isNotBlank(),
         )
-        AndroidNotifier.createChannel(this)
+        (core.notifier as AndroidNotifier).ensureChannel()
         if (core.store.subscriptions.length() > 0) schedulePolling(this, core.pollIntervalMinutes(), replace = false)
     }
 
@@ -68,27 +71,73 @@ class PollWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, params) {
 
 class AndroidNotifier(private val ctx: Context) : Notifier {
     companion object {
-        const val CHANNEL = "deals"
+        private const val PREFIX = "deals"
+        private const val QUIET = "deals_quiet"
+    }
 
-        fun createChannel(ctx: Context) {
-            val ch = NotificationChannel(CHANNEL, "실거래 알림", NotificationManager.IMPORTANCE_DEFAULT)
-            ch.description = "관심 단지의 새 실거래·거래 해제 알림"
-            ctx.getSystemService(NotificationManager::class.java).createNotificationChannel(ch)
+    private val nm get() = ctx.getSystemService(NotificationManager::class.java)
+    private fun prefs() = Prefs.get(App.core(ctx).store.settings)
+
+    /**
+     * 안드로이드 8+ 는 채널을 만든 뒤엔 소리·진동을 앱이 바꿀 수 없음
+     * → 설정 조합마다 채널을 만들고, 예전 채널은 지움
+     */
+    fun ensureChannel(p: JSONObject = prefs(), quiet: Boolean = false): String {
+        if (quiet) {
+            if (nm.getNotificationChannel(QUIET) == null) {
+                val ch = NotificationChannel(QUIET, "실거래 알림 (조용한 시간)", NotificationManager.IMPORTANCE_LOW)
+                ch.setSound(null, null)
+                ch.enableVibration(false)
+                nm.createNotificationChannel(ch)
+            }
+            return QUIET
         }
+        val sound = p.optBoolean("notiSound", true)
+        val uri = p.optString("soundUri")
+        val vib = p.optBoolean("notiVibrate", true)
+        val pattern = p.optString("vibratePattern", "short")
+        val popup = p.optBoolean("notiPopup", true)
+        val id = PREFIX + "_" + Integer.toHexString("$sound|$uri|$vib|$pattern|$popup".hashCode())
+        if (nm.getNotificationChannel(id) == null) {
+            val ch = NotificationChannel(
+                id, "실거래 알림",
+                if (popup) NotificationManager.IMPORTANCE_HIGH else NotificationManager.IMPORTANCE_DEFAULT,
+            )
+            ch.description = "관심 단지의 새 실거래·거래 해제 알림"
+            if (sound) {
+                val attrs = AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build()
+                ch.setSound(if (uri.isNotEmpty()) Uri.parse(uri) else Settings.System.DEFAULT_NOTIFICATION_URI, attrs)
+            } else {
+                ch.setSound(null, null)
+            }
+            ch.enableVibration(vib)
+            if (vib) ch.vibrationPattern = Prefs.PATTERNS[pattern] ?: Prefs.PATTERNS.getValue("short")
+            nm.createNotificationChannel(ch)
+        }
+        nm.notificationChannels
+            .filter { it.id.startsWith(PREFIX) && it.id != id && it.id != QUIET }
+            .forEach { nm.deleteNotificationChannel(it.id) }
+        return id
     }
 
     override fun show(id: Int, title: String, body: String, hash: String): Boolean {
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) return false
+        val p = prefs()
+        val quiet = Prefs.isQuiet(p, LocalTime.now(KST))
+        val channel = ensureChannel(p, quiet)
         val intent = Intent(ctx, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
             putExtra(MainActivity.EXTRA_HASH, hash)
         }
         val pi = PendingIntent.getActivity(ctx, id, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        val n = NotificationCompat.Builder(ctx, CHANNEL)
+        val n = NotificationCompat.Builder(ctx, channel)
             .setSmallIcon(R.drawable.ic_stat_house)
-            .setColor(0xFF2563EB.toInt())
+            .setColor(android.graphics.Color.parseColor(Prefs.accentColor(p, false)))
             .setContentTitle(title)
             .setContentText(body.lineSequence().firstOrNull() ?: "")
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))

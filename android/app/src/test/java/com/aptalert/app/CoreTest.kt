@@ -199,6 +199,50 @@ class CoreTest {
         dir.deleteRecursively()
     }
 
+    @Test fun prefsValidationAndQuietHours() {
+        val settings = JSONObject()
+        val p = Prefs.merge(settings, JSONObject()
+            .put("accent", "purple").put("theme", "dark").put("fontScale", 115)
+            .put("vibratePattern", "triple").put("notiSound", false)
+            .put("accent2", "x").put("fontScale2", 1)            // 없는 키 무시
+            .put("quietStart", "25:00"))                          // 잘못된 시각 무시
+        assertEquals("purple", p.getString("accent"))
+        assertEquals("dark", p.getString("theme"))
+        assertEquals(115, p.getInt("fontScale"))
+        assertEquals("triple", p.getString("vibratePattern"))
+        assertFalse(p.getBoolean("notiSound"))
+        assertEquals("22:00", p.getString("quietStart"))
+        assertFalse(p.has("accent2"))
+        assertEquals("#A78BFA", Prefs.accentColor(p, true))
+        Prefs.merge(settings, JSONObject().put("accent", "rainbow").put("fontScale", 999).put("soundUri", "file:///sdcard/x.mp3"))
+        assertEquals("purple", Prefs.get(settings).getString("accent"))
+        assertEquals("", Prefs.get(settings).getString("soundUri"))
+
+        val q = Prefs.defaults().put("quietEnabled", true).put("quietStart", "22:00").put("quietEnd", "08:00")
+        assertTrue(Prefs.isQuiet(q, java.time.LocalTime.of(23, 30)))
+        assertTrue(Prefs.isQuiet(q, java.time.LocalTime.of(7, 59)))
+        assertFalse(Prefs.isQuiet(q, java.time.LocalTime.of(8, 0)))
+        assertFalse(Prefs.isQuiet(q, java.time.LocalTime.of(12, 0)))
+        val day = Prefs.defaults().put("quietEnabled", true).put("quietStart", "13:00").put("quietEnd", "14:00")
+        assertTrue(Prefs.isQuiet(day, java.time.LocalTime.of(13, 30)))
+        assertFalse(Prefs.isQuiet(day, java.time.LocalTime.of(14, 30)))
+        assertFalse(Prefs.isQuiet(Prefs.defaults(), java.time.LocalTime.of(23, 0))) // 꺼져 있으면 항상 false
+    }
+
+    @Test fun canceledAlertsCanBeTurnedOff() {
+        val s = FakeServer()
+        s.trades += s.item(3, "300,000", 5)
+        val c = core(s)
+        call(c, "POST", "/api/settings", """{"serviceKey":"good","prefs":{"notiCanceled":false}}""")
+        assertFalse(call(c, "GET", "/api/settings").getJSONObject("data").getJSONObject("prefs").getBoolean("notiCanceled"))
+        val id = call(c, "GET", "/api/regions/11650/complexes").getJSONObject("data").getJSONArray("complexes").getJSONObject(0).getString("id")
+        call(c, "POST", "/api/subscriptions", """{"lawdCd":"11650","complexId":"$id","type":"trade"}""")
+        shown.clear()
+        s.trades[0] = s.item(3, "300,000", 5, canceled = true)
+        assertEquals(0, call(c, "POST", "/api/admin/poll").getJSONObject("data").getInt("notificationsSent"))
+        assertTrue(shown.isEmpty())
+    }
+
     @Test fun proxyMode() {
         val s = FakeServer()
         s.trades += s.item(3, "300,000", 5)

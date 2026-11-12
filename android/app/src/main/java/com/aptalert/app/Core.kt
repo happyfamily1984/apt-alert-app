@@ -188,7 +188,8 @@ class Alerts(
         list.put(n)
         while (list.length() > MAX_NOTIFICATIONS) list.remove(0)
         store.save()
-        val hash = "#/complex/${sub.getString("lawdCd")}/${sub.getString("complexId")}?type=$type"
+        // 알림을 누르면 그 단지 상세 화면에서 해당 거래로 이동 (NEW 표시)
+        val hash = "#/complex/${sub.getString("lawdCd")}/${sub.getString("complexId")}?type=$type&n=${n.getString("id")}"
         // 같은 단지는 휴대폰 알림도 하나로 (새 알림이 이전 알림을 대체)
         notifier.show("${sub.getString("lawdCd")}:${sub.getString("complexId")}".hashCode(), title, body, hash)
     }
@@ -305,7 +306,9 @@ class Alerts(
                 errors.add(g to (e.message ?: e.javaClass.simpleName))
             }
         }
+        val wantCanceled = Prefs.get(store.settings).optBoolean("notiCanceled", true)
         for (b in buckets.values) {
+            if (!wantCanceled) b.canceled.clear()
             if (b.fresh.isEmpty() && b.canceled.isEmpty()) continue
             val apt = b.sub.getString("aptNm")
             val title = when {

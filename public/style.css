@@ -5,8 +5,8 @@
   --text: #16181d;
   --muted: #6b7280;
   --line: #e4e7ec;
-  --accent: #2563eb;
-  --accent-soft: #e8efff;
+  --accent: var(--accent-l, #2563eb);
+  --accent-soft: color-mix(in srgb, var(--accent) 12%, #fff);
   --trade: #2563eb;
   --jeonse: #059669;
   --monthly: #d97706;
@@ -18,13 +18,13 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #0f1115; --surface: #181b21; --surface-2: #22262e; --text: #eceef2; --muted: #9aa1ad;
-    --line: #2a2f38; --accent: #5b8cff; --accent-soft: #1d2a4a; --trade: #6b9bff; --jeonse: #34d399;
+    --line: #2a2f38; --accent: var(--accent-d, #5b8cff); --accent-soft: color-mix(in srgb, var(--accent) 22%, #181b21); --trade: #6b9bff; --jeonse: #34d399;
     --monthly: #fbbf24; --danger: #f87171; --shadow: none; color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #0f1115; --surface: #181b21; --surface-2: #22262e; --text: #eceef2; --muted: #9aa1ad;
-  --line: #2a2f38; --accent: #5b8cff; --accent-soft: #1d2a4a; --trade: #6b9bff; --jeonse: #34d399;
+  --line: #2a2f38; --accent: var(--accent-d, #5b8cff); --accent-soft: color-mix(in srgb, var(--accent) 22%, #181b21); --trade: #6b9bff; --jeonse: #34d399;
   --monthly: #fbbf24; --danger: #f87171; --shadow: none; color-scheme: dark;
 }
 
@@ -198,3 +198,35 @@ a.tag-chip { padding: 0 6px; }
 .ir-right .new-dot, .ir-right .tag { margin-top: 2px; }
 [hidden] { display: none !important; }
 #dataSection[hidden] + .section-title { margin-top: 0; }
+
+/* ----- 설정: 스위치 · 색상 · 선택 ----- */
+.pref-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.pref-row .pref-text { min-width: 0; }
+.pref-row .pref-text small { display: block; color: var(--muted); font-size: 12px; margin-top: 1px; }
+.pref-sub { padding-left: 12px; border-left: 2px solid var(--line); }
+.pref-sub.disabled { opacity: .4; pointer-events: none; }
+.switch { position: relative; flex: none; width: 50px; height: 30px; }
+.switch input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; z-index: 1; }
+.switch span { position: absolute; inset: 0; border-radius: 99px; background: var(--line); transition: .2s; }
+.switch span::after { content: ''; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.25); transition: .2s; }
+.switch input:checked + span { background: var(--accent); }
+.switch input:checked + span::after { transform: translateX(20px); }
+.seg.pref-seg { margin: 6px 0 0; }
+.seg.pref-seg button { font-size: 13px; padding: 7px 0; }
+.label { display: block; font-size: 13px; color: var(--muted); }
+.swatches { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 8px; }
+.swatch { border: 2px solid transparent; background: var(--surface-2); border-radius: 12px; padding: 8px 0 6px; display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); }
+.swatch i { width: 26px; height: 26px; border-radius: 50%; display: block; }
+.swatch.active { border-color: var(--accent); color: var(--text); font-weight: 700; }
+.time-row { display: flex; align-items: center; gap: 8px; }
+.time-row input { flex: 1; border: 1px solid var(--line); background: var(--surface); color: var(--text); border-radius: 10px; padding: 9px 10px; font-size: 15px; }
+.pref-note { font-size: 12px; color: var(--muted); }
+.seg button { position: relative; }
+.tab-dot { position: absolute; top: 6px; right: calc(50% - 26px); width: 7px; height: 7px; border-radius: 50%; background: var(--danger); }
+.deal.is-new { background: color-mix(in srgb, var(--danger) 6%, transparent); margin: 0 -16px; padding-left: 16px; padding-right: 16px; }
+.deal.flash { animation: flash 2.4s ease-out; }
+@keyframes flash { 0%, 30% { background: color-mix(in srgb, var(--danger) 28%, transparent); } 100% { background: color-mix(in srgb, var(--danger) 6%, transparent); } }
+.deal .new-dot { vertical-align: 2px; }
+.tag, .new-dot { white-space: nowrap; display: inline-block; }
+.deal .meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.time-row input { min-width: 0; width: 100%; } .time-row.pref-sub { padding-right: 0; }

@@ -45,6 +45,36 @@ async function api(path, opts = {}) {
   return data;
 }
 
+// ---------- 설정: 화면 디자인 적용 ----------
+const ACCENTS = {
+  blue: ['#2563eb', '#5b8cff', '파랑'], green: ['#059669', '#34d399', '초록'], teal: ['#0d9488', '#2dd4bf', '청록'],
+  purple: ['#7c3aed', '#a78bfa', '보라'], pink: ['#db2777', '#f472b6', '분홍'], red: ['#dc2626', '#f87171', '빨강'],
+  orange: ['#ea580c', '#fb923c', '주황'], navy: ['#1e3a8a', '#93a5f5', '남색'],
+};
+const DEFAULT_PREFS = {
+  notiSound: true, soundName: '기본 알림음', notiVibrate: true, vibratePattern: 'short', notiPopup: true, notiCanceled: true,
+  quietEnabled: false, quietStart: '22:00', quietEnd: '08:00', theme: 'system', accent: 'blue', fontScale: 100,
+};
+let prefs = { ...DEFAULT_PREFS };
+try { Object.assign(prefs, JSON.parse(localStorage.getItem('prefs') || '{}')); } catch { /* */ }
+const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
+function applyAppearance(p = prefs) {
+  prefs = { ...DEFAULT_PREFS, ...p };
+  try { localStorage.setItem('prefs', JSON.stringify(prefs)); } catch { /* */ }
+  const root = document.documentElement;
+  if (prefs.theme === 'system') delete root.dataset.theme;
+  else root.dataset.theme = prefs.theme;
+  const [light, dark] = ACCENTS[prefs.accent] || ACCENTS.blue;
+  root.style.setProperty('--accent-l', light);
+  root.style.setProperty('--accent-d', dark);
+  const isDark = prefs.theme === 'dark' || (prefs.theme === 'system' && darkQuery.matches);
+  document.querySelector('meta[name=theme-color]')?.setAttribute('content', light);
+  if (window.AndroidBridge?.setAppearance) window.AndroidBridge.setAppearance(light, isDark, Number(prefs.fontScale) || 100);
+  else if (document.body) document.body.style.zoom = (Number(prefs.fontScale) || 100) / 100;
+}
+darkQuery.addEventListener?.('change', () => applyAppearance());
+applyAppearance();
+
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 function won(v) {
   const n = Math.round(Number(v) || 0);
@@ -197,17 +227,34 @@ async function viewRegion(lawd) {
 async function viewComplex(lawd, id, params) {
   setHeader('단지 정보', `#/region/${lawd}`);
   loading();
-  const [complex, subs] = await Promise.all([api(`/api/complexes/${lawd}/${id}`), api('/api/subscriptions')]);
+  const [complex, subs, inboxRes] = await Promise.all([
+    api(`/api/complexes/${lawd}/${id}`), api('/api/subscriptions'), api('/api/notifications').catch(() => ({ notifications: [] })),
+  ]);
   setHeader(complex.aptNm, `#/region/${lawd}`);
   let type = TYPES[params.get('type')] ? params.get('type') : 'trade';
   let area = 'all';
+  // 최근 7일 안에 '새 실거래'로 알림 받은 거래 → NEW 표시
+  const weekAgo = Date.now() - 7 * 86400000;
+  const mine = inboxRes.notifications.filter((n) => n.complexId === id && n.lawdCd === lawd);
+  const newDeals = mine.filter((n) => n.kind === 'new' && new Date(n.createdAt) >= weekAgo).flatMap((n) => n.deals || []);
+  const newKeys = new Set(newDeals.map((d) => d.key));
+  const newTypes = new Set(newDeals.map((d) => d.type));
+  // 알림(n=알림ID) 또는 알림함 거래 줄(focus=거래키)에서 들어오면 그 거래로 이동
+  let focusKey = params.get('focus') || '';
+  const fromNoti = params.get('n') && mine.find((n) => n.id === params.get('n'));
+  if (!focusKey && fromNoti) {
+    const ds = (fromNoti.deals || []).filter((d) => d.type === type);
+    if (ds.length) focusKey = ds[0].key;
+    (fromNoti.deals || []).forEach((d) => { newKeys.add(d.key); newTypes.add(d.type); });
+  }
+  if (focusKey) newKeys.add(focusKey);
 
   $view.innerHTML = `
     <div class="hero">
       <h2>${esc(complex.aptNm)}</h2>
       <div class="meta">${esc(complex.region.fullName)} ${esc(complex.umdNm)} ${esc(complex.jibun)}${complex.buildYear ? ` · ${complex.buildYear}년 준공` : ''}</div>
     </div>
-    <div class="seg" role="tablist">${Object.entries(TYPES).map(([t, l]) => `<button role="tab" data-type="${t}">${l}</button>`).join('')}</div>
+    <div class="seg" role="tablist">${Object.entries(TYPES).map(([t, l]) => `<button role="tab" data-type="${t}">${l}${newTypes.has(t) ? '<i class="tab-dot" aria-label="새 거래"></i>' : ''}</button>`).join('')}</div>
     <button class="alert-btn" id="alertBtn"></button>
     <div id="body"><div class="spinner"></div></div>`;
   const $body = $view.querySelector('#body');
@@ -262,9 +309,17 @@ async function viewComplex(lawd, id, params) {
       <div class="section-title">최근 ${data.months}개월 추이</div>
       <div class="card">${chart(deals)}</div>
       <div class="section-title">실거래 내역 ${deals.length}건</div>
-      <div class="card">${deals.length ? deals.map(dealRow).join('') : '<div class="meta">거래 내역이 없습니다</div>'}</div>
+      <div class="card">${deals.length ? deals.map((d) => dealRow(d, newKeys.has(d.key))).join('') : '<div class="meta">거래 내역이 없습니다</div>'}</div>
       <p class="meta" style="margin:12px 4px">출처: 국토교통부 실거래가 공개시스템 · 계약 후 30일 이내 신고되므로 최근 거래는 계속 추가됩니다.${type === 'monthly' ? ' 월세는 보증금 / 월세(만원) 기준입니다.' : ''}</p>`;
     $body.querySelectorAll('[data-area]').forEach((b) => (b.onclick = () => { area = b.dataset.area; draw(); }));
+    if (focusKey) {
+      const el = [...$body.querySelectorAll('[data-key]')].find((x) => x.dataset.key === focusKey);
+      focusKey = '';
+      if (el) {
+        el.classList.add('flash');
+        setTimeout(() => el.scrollIntoView({ block: 'center', behavior: 'smooth' }), 50);
+      }
+    }
   };
   const load = async () => {
     $view.querySelectorAll('[data-type]').forEach((b) => b.classList.toggle('active', b.dataset.type === type));
@@ -286,14 +341,15 @@ async function viewComplex(lawd, id, params) {
   load();
 }
 
-function dealRow(d) {
+function dealRow(d, isNew = false) {
   const tags = [];
+  if (isNew && !d.canceled) tags.push('<span class="new-dot">NEW</span>');
   if (d.canceled) tags.push('<span class="tag danger">해제</span>');
   if (d.dealingGbn === '직거래') tags.push('<span class="tag">직거래</span>');
   if (d.contractType) tags.push(`<span class="tag">${esc(d.contractType)}</span>`);
-  return `<div class="deal ${d.canceled ? 'canceled' : ''}">
+  return `<div class="deal ${d.canceled ? 'canceled' : ''} ${isNew ? 'is-new' : ''}" data-key="${esc(d.key)}">
     <div><b class="num">${d.date.slice(2).replace(/-/g, '.')}</b> ${tags.join(' ')}</div>
-    <div class="price num" style="text-align:right">${dealPrice(d)}</div>
+    <div class="price num" style="text-align:right">${d.type === 'monthly' ? `${won(d.deposit)}<small class="ir-rent" style="display:block">월 ${Number(d.monthlyRent).toLocaleString()}만</small>` : dealPrice(d)}</div>
     <div class="meta num">${m2(d.area)}㎡ (${pyeong(d.area)}평) · ${d.floor}층${d.dong ? ` · ${esc(d.dong)}동` : ''}</div>
     <div class="meta num" style="text-align:right">${Math.round((d.type === 'trade' ? d.price : d.deposit) / pyeong(d.area)).toLocaleString()}만/평</div>
   </div>`;
@@ -471,7 +527,7 @@ function inboxCard(g) {
   const counts = Object.entries(TYPES).map(([t, l]) => [t, l, g.rows.filter((r) => r.type === t).length]).filter((x) => x[2]);
   const href = g.complexId ? `#/complex/${g.lawdCd}/${g.complexId}?type=${g.rows[0]?.type || 'trade'}` : '#/alerts';
   const row = (d) => `
-    <a class="inbox-row ${d.canceled ? 'canceled' : ''}" href="#/complex/${g.lawdCd}/${g.complexId}?type=${d.type}">
+    <a class="inbox-row ${d.canceled ? 'canceled' : ''}" href="#/complex/${g.lawdCd}/${g.complexId}?type=${d.type}&focus=${encodeURIComponent(d.key)}">
       <span class="tag ${d.type}">${TYPES[d.type]}</span>
       <span class="ir-mid"><b class="num">${d.date.slice(2).replace(/-/g, '.')}</b><small class="meta num">${m2(d.area)}㎡ · ${d.floor}층</small></span>
       <span class="ir-right"><span class="price num ir-price">${d.type === 'monthly' ? won(d.deposit) : dealPrice(d)}</span>${d.type === 'monthly' ? `<small class="ir-rent num">월 ${Number(d.monthlyRent).toLocaleString()}만</small>` : ''}${d.canceled ? '<span class="tag danger">해제</span>' : d.isNew ? '<span class="new-dot">NEW</span>' : ''}</span>
@@ -501,6 +557,11 @@ async function viewSettings() {
   loading();
   const st = await api('/api/settings');
   config = await api('/api/config');
+  const P = { ...DEFAULT_PREFS, ...(st.prefs || prefs) };
+  const prefSwitch = (k, title, desc) => `
+    <div class="pref-row"><span class="pref-text">${title}<small>${desc}</small></span>
+      <label class="switch"><input type="checkbox" data-switch="${k}" ${P[k] ? 'checked' : ''} aria-label="${title}" /><span></span></label></div>`;
+  const prefSeg = (k, opts) => `<div class="seg pref-seg" data-seg="${k}">${opts.map(([v, l]) => `<button data-val="${v}" class="${String(P[k]) === String(v) ? 'active' : ''}">${l}</button>`).join('')}</div>`;
   const permText = { granted: '<span class="ok">✅ 켜짐</span>', denied: '🚫 꺼짐', default: '아직 허용 안 함' }[config.notifyPermission] || '-';
   $view.innerHTML = `
     <div id="dataSection" ${config.relayOnly ? 'hidden' : ''}>
@@ -537,13 +598,38 @@ async function viewSettings() {
       <div class="card-row"><span>알림 권한</span><span>${permText}</span></div>
       <div class="btn-row">
         <button class="btn" id="askPerm">알림 허용</button>
-        <button class="btn" id="notiSettings">알림 설정</button>
+        <button class="btn" id="notiSettings">휴대폰 설정</button>
         <button class="btn" id="testNoti">테스트 알림</button>
       </div>
       <label class="field"><span>새 실거래 자동 확인 주기</span>
         <select id="interval">${INTERVALS.map((m) => `<option value="${m}" ${m === st.pollIntervalMinutes ? 'selected' : ''}>${intervalLabel(m)}마다</option>`).join('')}</select></label>
-      <div class="meta">국토부 데이터는 보통 하루 한 번 갱신돼요. 3시간이면 충분하고, 짧을수록 배터리·API 호출이 늘어요.</div>
+      <div class="pref-note">국토부 데이터는 보통 하루 한 번 갱신돼요. 3시간이면 충분해요.</div>
       <button class="btn block" id="battery">🔋 배터리 최적화 해제 (알림이 늦게 올 때)</button>
+    </div>
+
+    <div class="section-title">알림 방법</div>
+    <div class="card stack">
+      ${prefSwitch('notiSound', '🔊 소리', '알림이 올 때 소리 내기')}
+      <div class="pref-row pref-sub" data-dep="notiSound"><span>알림음</span><button class="btn small" id="pickSound">${esc(P.soundName)} ›</button></div>
+      ${prefSwitch('notiVibrate', '📳 진동', '알림이 올 때 진동')}
+      <div class="pref-sub" data-dep="notiVibrate"><span class="label">진동 패턴</span>${prefSeg('vibratePattern', [['short', '짧게'], ['long', '길게'], ['double', '두 번'], ['triple', '세 번']])}</div>
+      ${prefSwitch('notiPopup', '💬 화면 위 팝업', '다른 앱을 쓰는 중에도 화면 위에 잠깐 표시')}
+      ${prefSwitch('notiCanceled', '⚠️ 거래 해제 알림', '신고됐던 거래가 취소(해제)되면 알림')}
+      ${prefSwitch('quietEnabled', '🌙 조용한 시간', '이 시간엔 소리·진동 없이 조용히 알림')}
+      <div class="time-row pref-sub" data-dep="quietEnabled">
+        <input type="time" data-time="quietStart" value="${esc(P.quietStart)}" aria-label="시작 시각" /> ~
+        <input type="time" data-time="quietEnd" value="${esc(P.quietEnd)}" aria-label="끝 시각" />
+      </div>
+      <div class="pref-note">소리·진동·팝업 설정은 다음에 오는 알림부터 적용돼요. <b>테스트 알림</b>으로 확인해 보세요.</div>
+    </div>
+
+    <div class="section-title">화면 디자인</div>
+    <div class="card stack">
+      <div><span class="label">테마</span>${prefSeg('theme', [['system', '휴대폰 설정'], ['light', '☀️ 밝게'], ['dark', '🌙 어둡게']])}</div>
+      <div><span class="label">강조 색상</span>
+        <div class="swatches">${Object.entries(ACCENTS).map(([k, [l, , name]]) => `<button class="swatch ${P.accent === k ? 'active' : ''}" data-accent="${k}"><i style="background:${l}"></i>${name}</button>`).join('')}</div>
+      </div>
+      <div><span class="label">글자 크기</span>${prefSeg('fontScale', [[85, '작게'], [100, '보통'], [115, '크게'], [130, '아주 크게']])}</div>
     </div>
 
     <details class="card" style="margin-top:20px" ${config.relayOnly ? 'hidden' : ''}>
@@ -594,6 +680,36 @@ async function viewSettings() {
     toast('개인 키를 삭제했어요. 중계 서버를 사용합니다');
     viewSettings();
   });
+  // ----- 알림 방법 · 화면 디자인 저장 -----
+  const DESIGN = ['theme', 'accent', 'fontScale'];
+  const syncDeps = () => $view.querySelectorAll('[data-dep]').forEach((el) => el.classList.toggle('disabled', !P[el.dataset.dep]));
+  const savePref = async (k, v) => {
+    P[k] = v;
+    if (DESIGN.includes(k)) applyAppearance({ ...prefs, [k]: v });
+    syncDeps();
+    try {
+      const r = await api('/api/settings', { method: 'POST', body: { prefs: { [k]: v } } });
+      if (r.prefs) applyAppearance({ ...prefs, ...r.prefs });
+    } catch (e) { toast(e.message); }
+  };
+  syncDeps();
+  $view.querySelectorAll('[data-switch]').forEach((el) => (el.onchange = () => savePref(el.dataset.switch, el.checked)));
+  $view.querySelectorAll('[data-seg]').forEach((seg) => seg.querySelectorAll('button').forEach((b) => (b.onclick = () => {
+    seg.querySelectorAll('button').forEach((x) => x.classList.toggle('active', x === b));
+    const k = seg.dataset.seg;
+    savePref(k, k === 'fontScale' ? Number(b.dataset.val) : b.dataset.val);
+  })));
+  $view.querySelectorAll('[data-accent]').forEach((b) => (b.onclick = () => {
+    $view.querySelectorAll('[data-accent]').forEach((x) => x.classList.toggle('active', x === b));
+    savePref('accent', b.dataset.accent);
+  }));
+  $view.querySelectorAll('[data-time]').forEach((el) => (el.onchange = () => el.value && savePref(el.dataset.time, el.value)));
+  $view.querySelector('#pickSound').onclick = async () => {
+    try {
+      const r = await api('/api/app/pick-sound', { method: 'POST' });
+      if (r.prefs) { Object.assign(P, r.prefs); $view.querySelector('#pickSound').textContent = `${r.prefs.soundName} ›`; }
+    } catch (e) { toast(e.message); }
+  };
   $view.querySelector('#interval').onchange = async (ev) => {
     await api('/api/settings', { method: 'POST', body: { pollIntervalMinutes: Number(ev.target.value) } });
     toast(`${intervalLabel(Number(ev.target.value))}마다 확인할게요`);
@@ -633,6 +749,7 @@ async function route() {
   try {
     config = await api('/api/config');
     document.getElementById('demoBadge').hidden = !config.demo;
+    if (config.prefs) applyAppearance({ ...prefs, ...config.prefs });
   } catch (e) {
     config = { demo: false };
   }

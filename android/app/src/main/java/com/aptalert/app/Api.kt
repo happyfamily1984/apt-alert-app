@@ -88,6 +88,7 @@ class Api(private val core: Core) {
                 .put("hasKey", core.dataSource() != "none")
                 .put("dataSource", core.dataSource())
                 .put("relayOnly", core.relayOnly)
+                .put("prefs", Prefs.get(core.store.settings))
                 .put("pollIntervalMinutes", core.pollIntervalMinutes())
                 .put("notifyPermission", core.platform.notifyPermission())
                 .put("appVersion", core.platform.appVersion)
@@ -164,11 +165,13 @@ class Api(private val core: Core) {
                     .put("dataSource", core.dataSource())
                     .put("proxyUrl", core.proxyUrl())
                     .put("defaultProxyUrl", core.defaultProxyUrl)
+                    .put("prefs", Prefs.get(core.store.settings))
                     .put("serviceKeyMasked", if (key.length > 8) key.take(4) + "••••" + key.takeLast(4) else if (key.isNotEmpty()) "••••" else "")
                     .put("pollIntervalMinutes", core.pollIntervalMinutes())
             }
 
             method == "POST" && r == listOf("settings") -> {
+                body.optJSONObject("prefs")?.let { Prefs.merge(core.store.settings, it) }
                 if (body.has("serviceKey") && !core.relayOnly) core.store.settings.put("serviceKey", body.getString("serviceKey").trim())
                 if (body.has("proxyUrl") && !core.relayOnly) {
                     val u = body.getString("proxyUrl").trim().trimEnd('/')
@@ -179,7 +182,7 @@ class Api(private val core: Core) {
                     core.platform.schedulePolling(core.pollIntervalMinutes())
                 }
                 core.store.save()
-                JSONObject().put("ok", true)
+                JSONObject().put("ok", true).put("prefs", Prefs.get(core.store.settings))
             }
 
             // body: {serviceKey} → 개인 키 테스트 / {proxyUrl} → 중계 서버 테스트 / {} → 현재 설정 테스트
