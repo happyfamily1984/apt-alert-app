@@ -1,7 +1,14 @@
-# (선택) PC에서 wrangler CLI로 배포할 때 사용. 휴대폰 대시보드 배포에는 필요 없음.
+# Cloudflare Workers Builds(GitHub 연결)와 wrangler CLI 배포에서 사용하는 설정.
+# 국토부 API 키(MOLIT_KEY)는 여기 쓰지 말고 대시보드의 Secret으로 넣으세요.
 name = "apt-alert"
 main = "worker.js"
 compatibility_date = "2025-01-01"
+
+# 대시보드에서 넣은 변수/비밀을 배포할 때 지우지 않음
+keep_vars = true
+
+[observability]
+enabled = true
 
 # KV 캐시를 쓰려면: npx wrangler kv namespace create CACHE 후 아래 주석 해제
 # [[kv_namespaces]]
