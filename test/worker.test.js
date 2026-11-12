@@ -46,11 +46,25 @@ test('입력 검증', async () => {
   assert.equal((await worker.fetch(req(`/molit/rent?LAWD_CD=11650&DEAL_YMD=${ym}`), env, ctx)).status, 200);
 });
 
+test('매매 기본 API 미등록이면 상세 자료 API로 재시도', async () => {
+  globalThis.fetch = async (u) => {
+    calls.push(String(u));
+    if (String(u).includes('RTMSDataSvcAptTrade/')) return new Response('<response><header><resultCode>30</resultCode><resultMsg>등록되지 않은 서비스키</resultMsg></header></response>');
+    return new Response(OK);
+  };
+  const r = await worker.fetch(req('/molit/trade?LAWD_CD=11111&DEAL_YMD=202403'), { MOLIT_KEY: 'k' }, ctx);
+  assert.equal(r.status, 200);
+  assert.match(calls[1], /RTMSDataSvcAptTradeDev/);
+  // 다음 요청은 성공했던 상세 API부터 시도
+  await worker.fetch(req('/molit/trade?LAWD_CD=11112&DEAL_YMD=202403'), { MOLIT_KEY: 'k' }, ctx);
+  assert.match(calls[2], /RTMSDataSvcAptTradeDev/);
+});
+
 test('키 오류는 JSON 에러, 키 미설정·토큰 불일치 차단', async () => {
   const r = await worker.fetch(req('/molit/trade?LAWD_CD=11651&DEAL_YMD=202402'), { MOLIT_KEY: 'bad' }, ctx);
   assert.equal(r.status, 502);
   const body = await r.json();
-  assert.match(body.error, /SERVICE_KEY_IS_NOT_REGISTERED/);
+  assert.match(body.error, /매매 실거래가 자료」에 등록되지 않았어요/);
   assert.doesNotMatch(JSON.stringify(body), /bad/);
   assert.equal((await worker.fetch(req('/molit/trade?LAWD_CD=11650&DEAL_YMD=202401'), {}, ctx)).status, 500);
   assert.equal((await worker.fetch(req('/molit/trade?LAWD_CD=11650&DEAL_YMD=202401'), { MOLIT_KEY: 'k', APP_TOKEN: 't' }, ctx)).status, 403);

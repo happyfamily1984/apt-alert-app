@@ -11,11 +11,20 @@
 // 요청 형식: GET /molit/trade?LAWD_CD=11680&DEAL_YMD=202610&pageNo=1&numOfRows=1000
 //           GET /molit/rent?...   (응답은 국토부 XML 그대로)
 
+// 매매는 기본 API가 막히면(활용신청 안 됨) '상세 자료' API로 자동 재시도
 const UPSTREAM = {
-  trade: 'https://apis.data.go.kr/1613000/RTMSDataSvcAptTrade/getRTMSDataSvcAptTrade',
-  rent: 'https://apis.data.go.kr/1613000/RTMSDataSvcAptRent/getRTMSDataSvcAptRent',
+  trade: [
+    'https://apis.data.go.kr/1613000/RTMSDataSvcAptTrade/getRTMSDataSvcAptTrade',
+    'https://apis.data.go.kr/1613000/RTMSDataSvcAptTradeDev/getRTMSDataSvcAptTradeDev',
+  ],
+  rent: ['https://apis.data.go.kr/1613000/RTMSDataSvcAptRent/getRTMSDataSvcAptRent'],
 };
-const VERSION = '1.0.0';
+const API_NAME = {
+  trade: '「국토교통부_아파트 매매 실거래가 자료」',
+  rent: '「국토교통부_아파트 전월세 실거래가 자료」',
+};
+const VERSION = '1.1.0';
+let preferred = { trade: 0, rent: 0 }; // 마지막으로 성공한 주소 기억
 const mem = new Map(); // 같은 서버 인스턴스 안에서의 초고속 캐시
 
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'X-App-Token' };
@@ -93,21 +102,35 @@ export default {
     // 4) 국토부 호출
     const key = String(env.MOLIT_KEY).trim();
     const encKey = /%[0-9A-Fa-f]{2}/.test(key) ? key : encodeURIComponent(key);
-    let res;
-    let body;
-    try {
-      res = await fetch(`${UPSTREAM[api]}?serviceKey=${encKey}&LAWD_CD=${lawd}&DEAL_YMD=${ymd}&pageNo=${page}&numOfRows=${rows}`);
-      body = await res.text();
-    } catch (e) {
-      return json({ error: '국토부 서버에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.' }, 502);
+    const urls = UPSTREAM[api];
+    const order = [preferred[api], ...urls.keys()].filter((v, i, a) => a.indexOf(v) === i);
+    let body = '';
+    let reason = '';
+    let ok = false;
+    for (const idx of order) {
+      try {
+        const res = await fetch(`${urls[idx]}?serviceKey=${encKey}&LAWD_CD=${lawd}&DEAL_YMD=${ymd}&pageNo=${page}&numOfRows=${rows}`);
+        body = await res.text();
+        if (/<resultCode>\s*0{2,3}\s*<\/resultCode>/.test(body)) {
+          ok = true;
+          preferred[api] = idx;
+          break;
+        }
+        reason = (body.match(/<returnAuthMsg>([^<]*)</) || body.match(/<resultMsg>([^<]*)</) || [])[1] || `HTTP ${res.status}`;
+        // 키 미등록일 때만 다음 주소 시도, 그 외 오류(한도 초과 등)는 바로 중단
+        if (!/NOT_REGISTERED|등록되지 않은|SERVICE_KEY/i.test(reason)) break;
+      } catch (e) {
+        reason = '국토부 서버 연결 실패';
+      }
     }
 
-    if (!/<resultCode>\s*0{2,3}\s*<\/resultCode>/.test(body)) {
-      // 키 오류·한도 초과 등: 사용자에게는 서버 문제임을 알리고, 키 값은 절대 노출하지 않음
-      const reason = (body.match(/<returnAuthMsg>([^<]*)</) || body.match(/<resultMsg>([^<]*)</) || [])[1] || `HTTP ${res.status}`;
+    if (!ok) {
+      // 키 값은 절대 노출하지 않음
       const msg = /LIMITED_NUMBER/.test(reason)
         ? '중계 서버의 오늘 국토부 API 호출 한도가 초과됐어요. 내일 다시 시도해 주세요.'
-        : `중계 서버의 국토부 API 오류: ${reason.slice(0, 80)}`;
+        : /NOT_REGISTERED|등록되지 않은|SERVICE_KEY/i.test(reason)
+          ? `중계 서버의 국토부 API 키가 ${API_NAME[api]}에 등록되지 않았어요. 공공데이터포털에서 이 API를 활용신청해 주세요. (승인 직후면 1~2시간 뒤 다시 시도)`
+          : `중계 서버의 국토부 API 오류: ${String(reason).slice(0, 80)}`;
       return json({ error: msg }, 502);
     }
 
