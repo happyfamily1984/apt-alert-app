@@ -301,6 +301,13 @@ async function viewAlerts() {
   loading();
   const [subs, { notifications }] = await Promise.all([api('/api/subscriptions'), api('/api/notifications')]);
   if (isApp) config = await api('/api/config');
+  // 같은 단지의 매매·전세·월세 구독을 카드 하나로 묶음
+  const groups = [];
+  for (const s of subs) {
+    let g = groups.find((x) => x.lawdCd === s.lawdCd && x.complexId === s.complexId);
+    if (!g) groups.push((g = { lawdCd: s.lawdCd, complexId: s.complexId, aptNm: s.aptNm, umdNm: s.umdNm, region: s.region, subs: [] }));
+    g.subs.push(s);
+  }
   const perm = isApp ? config.notifyPermission : pushSupported() ? Notification.permission : 'unsupported';
   const pushCard = {
     granted: '<div class="card-row"><span>✅ 푸시 알림이 켜져 있어요</span><button class="btn small" id="testPush">테스트</button></div>',
@@ -313,14 +320,22 @@ async function viewAlerts() {
 
   $view.innerHTML = `
     <div class="card">${pushCard}</div>
-    <div class="section-title">알림 받는 단지 ${subs.length}곳</div>
-    <div class="list">${subs.length ? subs.map((s) => `
-      <div class="card card-row">
-        <a href="#/complex/${s.lawdCd}/${s.complexId}?type=${s.type}" style="flex:1;min-width:0">
-          <h3>${esc(s.aptNm)} <span class="tag ${s.type}">${TYPES[s.type]}</span></h3>
-          <div class="meta">${esc(s.region?.fullName || '')} ${esc(s.umdNm)}</div>
-        </a>
-        <button class="btn small" data-unsub="${s.id}">해제</button>
+    <div class="section-title">알림 받는 단지 ${groups.length}곳</div>
+    <div class="list">${groups.length ? groups.map((g) => `
+      <div class="card sub-card">
+        <div class="card-row">
+          <a href="#/complex/${g.lawdCd}/${g.complexId}?type=${g.subs[0].type}" style="flex:1;min-width:0">
+            <h3>${esc(g.aptNm)}</h3>
+            <div class="meta">${esc(g.region?.fullName || '')} ${esc(g.umdNm)}</div>
+          </a>
+          <button class="btn small" data-unsub-all="${g.subs.map((s) => s.id).join(',')}">전체 해제</button>
+        </div>
+        <div class="sub-tags">${Object.keys(TYPES).map((t) => {
+          const s = g.subs.find((x) => x.type === t);
+          return s
+            ? `<span class="tag-chip ${t}"><a href="#/complex/${g.lawdCd}/${g.complexId}?type=${t}">🔔 ${TYPES[t]}</a><button aria-label="${TYPES[t]} 알림 해제" data-unsub="${s.id}" data-label="${TYPES[t]}">✕</button></span>`
+            : `<a class="tag-chip off" href="#/complex/${g.lawdCd}/${g.complexId}?type=${t}">＋ ${TYPES[t]}</a>`;
+        }).join('')}</div>
       </div>`).join('') : '<div class="card meta">아직 알림 받는 단지가 없어요. 단지를 찾아 🔔 버튼을 눌러보세요.</div>'}
     </div>
     ${config.demo && subs.length ? '<button class="btn" id="demoPoll" style="margin-top:12px;width:100%">🧪 데모: 새 실거래 발생시키기</button>' : ''}
@@ -360,7 +375,13 @@ async function viewAlerts() {
   });
   $view.querySelectorAll('[data-unsub]').forEach((b) => (b.onclick = async () => {
     await api(`/api/subscriptions/${b.dataset.unsub}`, { method: 'DELETE' });
-    toast('알림을 해제했습니다');
+    toast(`${b.dataset.label} 알림을 해제했습니다`);
+    viewAlerts();
+  }));
+  $view.querySelectorAll('[data-unsub-all]').forEach((b) => (b.onclick = async () => {
+    if (!confirm('이 단지의 매매·전세·월세 알림을 모두 해제할까요?')) return;
+    for (const id of b.dataset.unsubAll.split(',')) await api(`/api/subscriptions/${id}`, { method: 'DELETE' });
+    toast('이 단지의 알림을 모두 해제했습니다');
     viewAlerts();
   }));
   if (notifications.some((n) => !n.read)) {
