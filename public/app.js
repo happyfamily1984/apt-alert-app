@@ -145,18 +145,34 @@ async function viewRegion(lawd) {
   const recent = JSON.parse(store.get('recentRegions') || '[]').filter((x) => x.code !== region.code);
   store.set('recentRegions', JSON.stringify([{ code: region.code, name: region.name }, ...recent].slice(0, 6)));
 
-  const q = sessionStorage.getItem(`q:${lawd}`) || '';
+  const ss = {
+    get: (k) => { try { return sessionStorage.getItem(k); } catch { return null; } },
+    set: (k, v) => { try { sessionStorage.setItem(k, v); } catch { /* */ } },
+  };
+  // 동(법정동)별 단지 수 → 가나다순 버튼
+  const dongCount = new Map();
+  for (const c of complexes) dongCount.set(c.umdNm, (dongCount.get(c.umdNm) || 0) + 1);
+  const dongs = [...dongCount.keys()].sort((a, b) => a.localeCompare(b, 'ko'));
+  let dong = ss.get(`dong:${lawd}`) || '';
+  if (dong && !dongCount.has(dong)) dong = '';
+
   $view.innerHTML = `
-    <input class="search" type="search" placeholder="단지명 또는 동 이름 검색" value="${esc(q)}" aria-label="단지 검색" />
+    <div class="chips dong-chips" id="dongChips">
+      <button class="chip ${dong ? '' : 'active'}" data-dong="">전체 <small>${complexes.length}</small></button>
+      ${dongs.map((d) => `<button class="chip ${d === dong ? 'active' : ''}" data-dong="${esc(d)}">${esc(d)} <small>${dongCount.get(d)}</small></button>`).join('')}
+    </div>
+    <input class="search" type="search" placeholder="단지명 검색" value="${esc(ss.get(`q:${lawd}`) || '')}" aria-label="단지 검색" />
     <div class="meta" id="count" style="margin:0 4px 8px"></div>
     <div class="list" id="list"></div>`;
   const $list = $view.querySelector('#list');
   const $input = $view.querySelector('.search');
   const draw = () => {
     const term = $input.value.trim().replace(/\s+/g, '');
-    try { sessionStorage.setItem(`q:${lawd}`, $input.value); } catch { /* */ }
-    const items = complexes.filter((c) => !term || `${c.aptNm}${c.umdNm}`.replace(/\s+/g, '').includes(term));
-    $view.querySelector('#count').textContent = `최근 거래가 있는 단지 ${items.length}곳`;
+    ss.set(`q:${lawd}`, $input.value);
+    ss.set(`dong:${lawd}`, dong);
+    $view.querySelectorAll('[data-dong]').forEach((b) => b.classList.toggle('active', b.dataset.dong === dong));
+    const items = complexes.filter((c) => (!dong || c.umdNm === dong) && (!term || `${c.aptNm}${c.umdNm}`.replace(/\s+/g, '').includes(term)));
+    $view.querySelector('#count').textContent = `${dong ? `${region.name} ${dong}` : `${region.name} 전체`} · 최근 거래가 있는 단지 ${items.length}곳`;
     $list.innerHTML = items.length
       ? items.map((c) => `
         <a class="card" href="#/complex/${lawd}/${c.id}">
@@ -166,8 +182,14 @@ async function viewRegion(lawd) {
         </a>`).join('')
       : '<div class="empty">검색 결과가 없습니다</div>';
   };
+  $view.querySelectorAll('[data-dong]').forEach((b) => (b.onclick = () => {
+    dong = b.dataset.dong;
+    draw();
+    b.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+  }));
   $input.oninput = draw;
   draw();
+  $view.querySelector('#dongChips .active')?.scrollIntoView({ inline: 'center', block: 'nearest' });
 }
 
 // ---------- 화면: 단지 상세 ----------

@@ -178,3 +178,5 @@ a.tag-chip { padding: 0 6px; }
 .tag-chip.jeonse { color: var(--jeonse); background: color-mix(in srgb, var(--jeonse) 12%, transparent); }
 .tag-chip.monthly { color: var(--monthly); background: color-mix(in srgb, var(--monthly) 14%, transparent); }
 .tag-chip.off { color: var(--muted); background: none; border-color: var(--line); border-style: dashed; font-weight: 500; }
+.dong-chips { margin-bottom: 12px; position: sticky; top: 52px; z-index: 5; background: var(--bg); padding: 4px 0 8px; }
+.chip small { font-size: 11px; opacity: .7; margin-left: 2px; }
