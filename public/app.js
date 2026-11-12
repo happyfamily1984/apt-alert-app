@@ -83,6 +83,21 @@ function applyAppearance(p = prefs) {
 darkQuery.addEventListener?.('change', () => applyAppearance());
 applyAppearance();
 
+// ---------- 아이콘 (선 아이콘, 글자 색을 따라감) ----------
+const svg = (d, extra = '') => `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true" ${extra}>${d}</svg>`;
+const IC = {
+  pin: svg('<path class="f" d="M12 2.5a7 7 0 0 0-7 7c0 5 7 12 7 12s7-7 7-12a7 7 0 0 0-7-7z"/><circle cx="12" cy="9.5" r="2.6" fill="#fff"/>'),
+  building: svg('<path class="f" d="M3 21V9l5-2v14zM9 21V4l7-1.5V21zM17 21V8l4 1.5V21z"/><path d="M11.5 7h2M11.5 10h2M11.5 13h2M11.5 16h2" stroke="#fff" stroke-width="1.4"/>'),
+  bell: svg('<path class="f" d="M12 3a6 6 0 0 0-6 6v4.5L4 16.5V18h16v-1.5l-2-3V9a6 6 0 0 0-6-6zM9.8 19.5a2.3 2.3 0 0 0 4.4 0z"/>'),
+  star: svg('<path class="f" d="m12 2.8 2.8 5.9 6.4.8-4.7 4.4 1.2 6.4L12 17.2l-5.7 3.1 1.2-6.4-4.7-4.4 6.4-.8z"/>'),
+  refresh: svg('<path d="M20 11a8 8 0 0 0-14.5-4.5M4 4.5v3h3M4 13a8 8 0 0 0 14.5 4.5M20 19.5v-3h-3" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>'),
+  clock: svg('<circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 7.5V12l3 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>'),
+  chev: svg('<path d="m9 5 7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>'),
+  check: svg('<path d="m5.5 12.5 4 4 9-9" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>'),
+  megaphone: svg('<path class="f" d="M3 10v4l2 .5 1.5 5h2.5l-1-4.5L19 18V6L5 9.5z"/><path d="M21 9.5v5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'),
+};
+const THUMB = 'img/apt.jpg';
+
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 function won(v) {
   const n = Math.round(Number(v) || 0);
@@ -161,14 +176,24 @@ async function viewHome() {
   const recent = JSON.parse(store.get('recentRegions') || '[]');
   const render = (selected) => {
     const r = regionsCache.find((x) => x.sido === selected) || regionsCache[0];
+    const current = recent[0]?.code;
     $view.innerHTML = `
-      ${isApp && !config.hasKey ? '<a class="banner" href="#/settings">👉 먼저 ⚙️ 설정에서 데이터 연결(중계 서버 주소 또는 API 키)을 설정해 주세요</a>' : ''}
-      ${recent.length ? `<div class="section-title">최근 본 지역</div>
-        <div class="chips">${recent.map((x) => `<a class="chip" href="#/region/${x.code}">${esc(x.name)}</a>`).join('')}</div>` : ''}
-      <div class="section-title">시·도</div>
-      <div class="chips" id="sidoChips">${regionsCache.map((x) => `<button class="chip ${x.sido === r.sido ? 'active' : ''}" data-sido="${esc(x.sido)}">${esc(x.sido)}</button>`).join('')}</div>
-      <div class="section-title">시·군·구</div>
-      <div class="grid">${r.sigungu.map((s) => `<a href="#/region/${s.code}">${esc(s.name)}</a>`).join('')}</div>`;
+      <div class="sheet">
+      ${isApp && !config.hasKey ? '<a class="banner" href="#/settings">👉 먼저 ⚙️ 설정에서 데이터 연결을 설정해 주세요</a>' : ''}
+      ${recent.length ? `<h3 class="sec">${IC.pin}최근 본 지역</h3>
+        <div class="chips pill-row">${recent.map((x) => `<a class="chip" href="#/region/${x.code}">${esc(x.name)}</a>`).join('')}</div>` : ''}
+      <div class="sido-box">
+        <h3 class="sec">${IC.building}시·도</h3>
+        <div class="chips" id="sidoChips">${regionsCache.map((x) => `<button class="chip ${x.sido === r.sido ? 'active' : ''}" data-sido="${esc(x.sido)}">${esc(x.sido)}${x.sido === r.sido ? IC.check : ''}</button>`).join('')}</div>
+      </div>
+      <h3 class="sec">${IC.pin}시·군·구</h3>
+      <div class="grid region-grid">${r.sigungu.map((x) => `<a href="#/region/${x.code}" class="${x.code === current ? 'current' : ''}">${esc(x.name)}${x.code === current ? `<span class="ck">${IC.check}</span>` : ''}</a>`).join('')}</div>
+      <a class="promo" href="#/alerts">
+        <span class="promo-ic">${IC.megaphone}</span>
+        <span>관심 지역을 선택하고<br />실거래가 알림을 받아보세요!</span>
+        <span class="round-chev">${IC.chev}</span>
+      </a>
+      </div>`;
     $view.querySelector('#sidoChips .active')?.scrollIntoView({ inline: 'center', block: 'nearest' });
     $view.querySelectorAll('[data-sido]').forEach((b) => (b.onclick = () => { store.set('sido', b.dataset.sido); render(b.dataset.sido); }));
   };
@@ -214,10 +239,13 @@ async function viewRegion(lawd) {
     $view.querySelector('#count').textContent = `${dong ? `${region.name} ${dong}` : `${region.name} 전체`} · 최근 거래가 있는 단지 ${items.length}곳`;
     $list.innerHTML = items.length
       ? items.map((c) => `
-        <a class="card" href="#/complex/${lawd}/${c.id}">
-          <div class="card-row"><h3>${esc(c.aptNm)}</h3>${c.lastTradePrice ? `<span class="price num">${won(c.lastTradePrice)}</span>` : ''}</div>
-          <div class="card-row meta"><span>${esc(c.umdNm)} ${esc(c.jibun)}${c.buildYear ? ` · ${c.buildYear}년` : ''}</span>${c.lastTradeDate ? `<span>${c.lastTradeDate.slice(2).replace(/-/g, '.')} 매매</span>` : ''}</div>
-          <div class="counts">${Object.entries(TYPES).map(([t, l]) => `<span class="tag ${t}">${l} ${c.counts[t]}</span>`).join('')}</div>
+        <a class="card cx-card" href="#/complex/${lawd}/${c.id}">
+          <img class="thumb sm" src="${THUMB}" alt="" loading="lazy" />
+          <span class="cx-main">
+            <span class="card-row"><h3>${esc(c.aptNm)}</h3>${c.lastTradePrice ? `<span class="price num">${won(c.lastTradePrice)}</span>` : ''}</span>
+            <span class="card-row meta"><span>${esc(c.umdNm)} ${esc(c.jibun)}${c.buildYear ? ` · ${c.buildYear}년` : ''}</span>${c.lastTradeDate ? `<span>${c.lastTradeDate.slice(2).replace(/-/g, '.')} 매매</span>` : ''}</span>
+            <span class="counts">${Object.entries(TYPES).map(([t, l]) => `<span class="tag ${t}">${l} ${c.counts[t]}</span>`).join('')}</span>
+          </span>
         </a>`).join('')
       : '<div class="empty">검색 결과가 없습니다</div>';
   };
@@ -258,9 +286,13 @@ async function viewComplex(lawd, id, params) {
   if (focusKey) newKeys.add(focusKey);
 
   $view.innerHTML = `
-    <div class="hero">
-      <h2>${esc(complex.aptNm)}</h2>
-      <div class="meta">${esc(complex.region.fullName)} ${esc(complex.umdNm)} ${esc(complex.jibun)}${complex.buildYear ? ` · ${complex.buildYear}년 준공` : ''}</div>
+    <div class="card cx-hero">
+      <img class="thumb" src="${THUMB}" alt="" />
+      <div class="cx-hero-main">
+        <h2>${esc(complex.aptNm)}</h2>
+        <div class="meta">${esc(complex.region.fullName)} ${esc(complex.umdNm)} ${esc(complex.jibun)}</div>
+        ${complex.buildYear ? `<span class="tag">${complex.buildYear}년 준공</span>` : ''}
+      </div>
     </div>
     <div class="seg" role="tablist">${Object.entries(TYPES).map(([t, l]) => `<button role="tab" data-type="${t}">${l}${newTypes.has(t) ? '<i class="tab-dot" aria-label="새 거래"></i>' : ''}</button>`).join('')}</div>
     <button class="alert-btn" id="alertBtn"></button>
@@ -399,38 +431,42 @@ async function viewAlerts() {
   }
   const perm = isApp ? config.notifyPermission : pushSupported() ? Notification.permission : 'unsupported';
   const pushCard = {
-    granted: '<div class="card-row"><span>✅ 푸시 알림이 켜져 있어요</span><button class="btn small" id="testPush">테스트</button></div>',
+    granted: `<span class="ok-dot">${IC.check}</span><b>푸시 알림이 켜져 있어요</b><button class="pill-btn" id="testPush">테스트 ${IC.chev}</button>`,
     denied: isApp
-      ? '<div class="card-row"><span>🚫 알림이 꺼져 있어요</span><button class="btn primary small" id="openNotiSettings">설정 열기</button></div>'
-      : '<div>🚫 브라우저에서 알림이 차단되어 있어요. 사이트 설정에서 알림을 허용해 주세요.</div>',
-    default: '<div class="card-row"><span>푸시 알림을 켜면 새 실거래를 바로 받아요</span><button class="btn primary small" id="enablePush">켜기</button></div>',
-    unsupported: '<div class="meta">이 브라우저는 푸시를 지원하지 않아요. (iPhone은 공유 → 홈 화면에 추가 후 사용) 알림은 아래 알림함에 쌓입니다.</div>',
+      ? `<span class="ok-dot off">!</span><b>알림이 꺼져 있어요</b><button class="pill-btn primary" id="openNotiSettings">설정 열기 ${IC.chev}</button>`
+      : '<b>🚫 브라우저에서 알림이 차단되어 있어요. 사이트 설정에서 허용해 주세요.</b>',
+    default: `<span class="ok-dot off">${IC.bell}</span><b>푸시 알림을 켜면 새 실거래를 바로 받아요</b><button class="pill-btn primary" id="enablePush">켜기 ${IC.chev}</button>`,
+    unsupported: '<span class="meta">이 브라우저는 푸시를 지원하지 않아요. 알림은 아래 알림함에 쌓입니다.</span>',
   }[perm];
+  const SUB_PREVIEW = 3;
 
   $view.innerHTML = `
-    <div class="card">${pushCard}</div>
-    <div class="section-title">알림 받는 단지 ${groups.length}곳</div>
-    <div class="list">${groups.length ? groups.map((g) => `
-      <div class="card sub-card">
-        <div class="card-row">
-          <a href="#/complex/${g.lawdCd}/${g.complexId}?type=${g.subs[0].type}" style="flex:1;min-width:0">
-            <h3>${esc(g.aptNm)}</h3>
-            <div class="meta">${esc(g.region?.fullName || '')} ${esc(g.umdNm)}</div>
-          </a>
-          <button class="btn small" data-unsub-all="${g.subs.map((s) => s.id).join(',')}">전체 해제</button>
+    <div class="card push-card">${pushCard}</div>
+    <div class="sec-row"><h3 class="sec">${IC.bell}알림 받는 단지 ${groups.length}곳</h3>${groups.length > SUB_PREVIEW ? `<button class="more-link" id="subMore">더보기 ${IC.chev}</button>` : ''}</div>
+    <div class="list" id="subList">${groups.length ? groups.map((g, i) => `
+      <div class="card sub-card ${i >= SUB_PREVIEW ? 'extra' : ''}">
+        <a class="thumb-link" href="#/complex/${g.lawdCd}/${g.complexId}?type=${g.subs[0].type}"><img class="thumb" src="${THUMB}" alt="" /></a>
+        <div class="sub-main">
+          <div class="sub-top">
+            <a href="#/complex/${g.lawdCd}/${g.complexId}?type=${g.subs[0].type}" style="flex:1;min-width:0">
+              <h3>${esc(g.aptNm)}</h3>
+              <div class="meta">${esc(g.region?.fullName || '')} ${esc(g.umdNm)}</div>
+            </a>
+            <button class="pill-btn small" data-unsub-all="${g.subs.map((s) => s.id).join(',')}">전체 해제</button>
+          </div>
+          <div class="sub-tags">${Object.keys(TYPES).map((t) => {
+            const s = g.subs.find((x) => x.type === t);
+            return s
+              ? `<span class="tag-chip ${t}"><a href="#/complex/${g.lawdCd}/${g.complexId}?type=${t}">${IC.bell}${TYPES[t]}</a><button aria-label="${TYPES[t]} 알림 해제" data-unsub="${s.id}" data-label="${TYPES[t]}">✕</button></span>`
+              : `<a class="tag-chip off" href="#/complex/${g.lawdCd}/${g.complexId}?type=${t}">＋ ${TYPES[t]}</a>`;
+          }).join('')}</div>
         </div>
-        <div class="sub-tags">${Object.keys(TYPES).map((t) => {
-          const s = g.subs.find((x) => x.type === t);
-          return s
-            ? `<span class="tag-chip ${t}"><a href="#/complex/${g.lawdCd}/${g.complexId}?type=${t}">🔔 ${TYPES[t]}</a><button aria-label="${TYPES[t]} 알림 해제" data-unsub="${s.id}" data-label="${TYPES[t]}">✕</button></span>`
-            : `<a class="tag-chip off" href="#/complex/${g.lawdCd}/${g.complexId}?type=${t}">＋ ${TYPES[t]}</a>`;
-        }).join('')}</div>
       </div>`).join('') : '<div class="card meta">아직 알림 받는 단지가 없어요. 단지를 찾아 🔔 버튼을 눌러보세요.</div>'}
     </div>
     ${config.demo && subs.length ? '<button class="btn" id="demoPoll" style="margin-top:12px;width:100%">🧪 데모: 새 실거래 발생시키기</button>' : ''}
-    ${isApp && subs.length ? `<button class="btn" id="pollNow" style="margin-top:12px;width:100%">🔄 지금 새 실거래 확인</button>
-      <div class="meta" style="margin:6px 4px 0">마지막 확인: ${config.lastPollAt ? ago(config.lastPollAt) : '아직 없음'} · ${intervalLabel(config.pollIntervalMinutes)}마다 자동 확인</div>` : ''}
-    <div class="section-title">알림함</div>
+    ${isApp && subs.length ? `<button class="cta" id="pollNow"><span class="cta-ic">${IC.refresh}</span><span class="cta-text">지금 새 실거래 확인</span><span class="cta-chev">${IC.chev}</span></button>
+      <div class="last-check">${IC.clock}마지막 확인: ${config.lastPollAt ? ago(config.lastPollAt) : '아직 없음'} <span class="dot">•</span> ${intervalLabel(config.pollIntervalMinutes)}마다 자동 확인</div>` : ''}
+    <h3 class="sec">${IC.star}알림함</h3>
     <div class="list">${inbox.length ? inbox.map(inboxCard).join('') : '<div class="card meta">받은 알림이 없습니다</div>'}
     </div>`;
 
@@ -449,9 +485,15 @@ async function viewAlerts() {
     toast(`새 거래 알림 ${r.notificationsSent}건 발송`);
     viewAlerts();
   });
+  $view.querySelector('#subMore')?.addEventListener('click', (ev) => {
+    $view.querySelector('#subList').classList.add('expanded');
+    ev.currentTarget.remove();
+  });
   $view.querySelector('#pollNow')?.addEventListener('click', async (ev) => {
-    ev.target.disabled = true;
-    ev.target.textContent = '확인 중…';
+    const btn = ev.currentTarget;
+    btn.disabled = true;
+    btn.classList.add('spinning');
+    btn.querySelector('.cta-text').textContent = '확인 중…';
     try {
       const r = await api('/api/admin/poll', { method: 'POST' });
       toast(r.errors?.length ? `오류: ${r.errors[0].error}` : r.notificationsSent ? `새 거래 알림 ${r.notificationsSent}건` : '새로 신고된 거래가 없어요');
@@ -541,10 +583,13 @@ function inboxCard(g) {
     </a>`;
   return `
     <div class="card inbox-card ${g.unread ? 'unread' : ''}">
-      <a class="card-row" href="${href}">
-        <h3>${esc(g.aptNm)}</h3><span class="meta" style="white-space:nowrap">${ago(g.latest)}</span>
+      <a class="inbox-head" href="${href}">
+        <img class="thumb sm" src="${THUMB}" alt="" />
+        <span class="ih-main">
+          <span class="card-row"><h3>${esc(g.aptNm)}</h3><span class="meta ih-time">${ago(g.latest)} ${IC.chev}</span></span>
+          ${g.place.trim() ? `<span class="meta">${esc(g.place)}</span>` : ''}
+        </span>
       </a>
-      ${g.place.trim() ? `<div class="meta">${esc(g.place)}</div>` : ''}
       ${counts.length ? `<div class="counts">${counts.map(([t, l, c]) => `<span class="tag ${t}">${l} ${c}</span>`).join('')}<span class="meta" style="margin-left:auto">${g.recent ? '최근 1개월 · ' : ''}최신순</span></div>` : ''}
       ${g.rows.length ? `<div class="inbox-rows">${g.rows.map((d, i) => (i < INBOX_PREVIEW ? row(d) : row(d).replace('class="inbox-row', 'class="inbox-row extra'))).join('')}</div>
         ${g.rows.length > INBOX_PREVIEW ? `<button class="btn small block" data-more style="margin-top:8px">더 보기 (${g.rows.length - INBOX_PREVIEW}건)</button>` : ''}`
@@ -821,6 +866,12 @@ async function route() {
   const [path, query] = (location.hash.slice(1) || '/').split('?');
   const parts = path.split('/').filter(Boolean);
   const params = new URLSearchParams(query);
+  // 홈·내 알림 화면은 상단 일러스트 배너, 나머지는 기존 상단 바
+  const heroMode = !parts[0] ? 'home' : parts[0] === 'alerts' ? 'plain' : '';
+  document.body.classList.toggle('has-hero', Boolean(heroMode));
+  document.body.dataset.page = parts[0] || 'home';
+  document.getElementById('hero').hidden = !heroMode;
+  document.getElementById('heroBrand').hidden = true; // 홈 배너 그림에 제목이 들어 있음
   const tab = ['alerts', 'settings'].includes(parts[0]) ? parts[0] : 'search';
   document.querySelectorAll('.tabbar a').forEach((a) => a.classList.toggle('active', a.dataset.tab === tab));
   window.scrollTo(0, 0);

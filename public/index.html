@@ -18,11 +18,17 @@
     <h1 id="title">실거래 알리미</h1>
     <span class="demo-badge" id="demoBadge" hidden>DEMO</span>
   </header>
+  <section class="hero" id="hero" hidden>
+    <div class="hero-brand" id="heroBrand">
+      <span class="hero-logo"><svg viewBox="0 0 48 48" width="34" height="34"><path d="M6 22 24 7l18 15" fill="none" stroke="#1d4fd8" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M11 20v20h26V20" fill="#fff" stroke="#1d4fd8" stroke-width="3" stroke-linejoin="round"/><rect x="18" y="24" width="12" height="11" rx="1.5" fill="#2f6bff"/><path d="M24 24v11M18 29.5h12" stroke="#fff" stroke-width="1.6"/></svg></span>
+      <div><h2>실거래 알리미</h2><p>원하는 지역의<br />실거래 소식을 받아보세요</p></div>
+    </div>
+  </section>
   <main id="view" aria-live="polite"></main>
   <nav class="tabbar">
-    <a href="#/" data-tab="search"><span>🔍</span>단지 찾기</a>
-    <a href="#/alerts" data-tab="alerts"><span>🔔</span>내 알림<b class="badge" id="unreadBadge" hidden></b></a>
-    <a href="#/settings" data-tab="settings" id="settingsTab" hidden><span>⚙️</span>설정</a>
+    <a href="#/" data-tab="search"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg>단지 찾기</a>
+    <a href="#/alerts" data-tab="alerts"><svg viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2.2 2.2 0 0 0 4 0"/></svg>내 알림<b class="badge" id="unreadBadge" hidden></b></a>
+    <a href="#/settings" data-tab="settings" id="settingsTab" hidden><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M5.5 18.5l1.7-1.7M16.8 7.2l1.7-1.7"/><circle cx="12" cy="12" r="6.5"/></svg>설정</a>
   </nav>
   <div class="toast" id="toast" role="status"></div>
   <script type="module" src="app.js"></script>
