@@ -23,7 +23,7 @@ const API_NAME = {
   trade: '「국토교통부_아파트 매매 실거래가 자료」',
   rent: '「국토교통부_아파트 전월세 실거래가 자료」',
 };
-const VERSION = '1.1.0';
+const VERSION = '1.2.0';
 let preferred = { trade: 0, rent: 0 }; // 마지막으로 성공한 주소 기억
 const mem = new Map(); // 같은 서버 인스턴스 안에서의 초고속 캐시
 
@@ -75,7 +75,8 @@ export default {
 
     // 이번 달·지난달은 신고가 계속 추가되므로 짧게, 그 이전 달은 길게 캐시
     const recent = ymd === kstYm(0) || ymd === kstYm(1);
-    const ttl = recent ? 3 * 3600 : 7 * 86400;
+    // 이번 달·지난달은 신고가 계속 추가되므로 짧게(30분), 그 이전 달은 길게(7일) 캐시
+    const ttl = recent ? 30 * 60 : 7 * 86400;
     const cacheKey = `${api}:${lawd}:${ymd}:${page}:${rows}`;
 
     // 1) 메모리
@@ -90,8 +91,8 @@ export default {
       if (r) return xml(await r.text(), 'EDGE', ttl);
     }
 
-    // 3) KV
-    if (env.CACHE) {
+    // 3) KV (지난 달 이전 자료만: KV는 하루 쓰기 횟수 제한이 있고, 최근 자료는 자주 바뀜)
+    if (env.CACHE && !recent) {
       const v = await env.CACHE.get(cacheKey);
       if (v) {
         remember(cacheKey, v, ttl);
@@ -136,7 +137,7 @@ export default {
 
     remember(cacheKey, body, ttl);
     if (edge) ctx.waitUntil(edge.put(cacheReq, new Response(body, { headers: { 'Cache-Control': `max-age=${ttl}` } })));
-    if (env.CACHE) ctx.waitUntil(env.CACHE.put(cacheKey, body, { expirationTtl: ttl }));
+    if (env.CACHE && !recent) ctx.waitUntil(env.CACHE.put(cacheKey, body, { expirationTtl: ttl }));
     return xml(body, 'MISS', ttl);
   },
 };

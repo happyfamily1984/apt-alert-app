@@ -47,6 +47,47 @@ class Core(
     val api = Api(this)
 
     fun pollIntervalMinutes() = store.settings.optInt("pollIntervalMinutes", 180)
+
+    private val clockFn = clock
+
+    /** 자동 확인을 시작한 시각 기록 (오래 실행 안 되면 경고하기 위함) */
+    fun markAutoSince() {
+        if (store.subscriptions.length() > 0 && !store.data.has("autoSince")) {
+            store.data.put("autoSince", java.time.Instant.ofEpochMilli(clockFn()).toString())
+            store.save()
+        }
+    }
+
+    /** 자동 확인이 한동안 실행되지 않았는지 (주기 x2 + 30분 넘게 기록 없음) */
+    fun autoPollStale(): Boolean {
+        if (store.subscriptions.length() == 0) return false
+        fun t(k: String) = runCatching { java.time.Instant.parse(store.data.optString(k)).toEpochMilli() }.getOrNull()
+        val ref = t("lastAutoPollAt") ?: t("autoSince") ?: return false
+        return clockFn() - ref > pollIntervalMinutes() * 2 * 60_000L + 30 * 60_000L
+    }
+
+    /**
+     * 자동 확인 1회 (주기 작업·알람 공용). 두 예약이 겹쳐 돌거나 방금 수동으로 확인했으면 건너뜀.
+     * 결과를 기록해 앱 화면에서 '마지막 자동 확인'을 보여줌.
+     * @return 실제로 확인했으면 결과, 건너뛰었으면 null
+     */
+    fun runAutoPoll(source: String): Alerts.PollResult? {
+        if (store.subscriptions.length() == 0) return null
+        val now = clockFn()
+        markAutoSince()
+        val last = runCatching { java.time.Instant.parse(store.data.optString("lastPollAt")).toEpochMilli() }.getOrNull()
+        val minGap = maxOf(10 * 60_000L, pollIntervalMinutes() * 60_000L / 2)
+        if (last != null && now - last < minGap) return null
+        val r = alerts.poll()
+        synchronized(alerts) {
+            store.data.put("lastAutoPollAt", java.time.Instant.ofEpochMilli(now).toString())
+                .put("lastAutoPollSource", source)
+                .put("lastAutoPollError", r.errors.firstOrNull()?.second ?: JSONObject.NULL)
+                .put("lastAutoPollSent", r.sent)
+            store.save()
+        }
+        return r
+    }
 }
 
 /**
@@ -90,6 +131,10 @@ class Api(private val core: Core) {
                 .put("relayOnly", core.relayOnly)
                 .put("prefs", Prefs.get(core.store.settings))
                 .put("pollIntervalMinutes", core.pollIntervalMinutes())
+                .put("lastAutoPollAt", core.store.data.opt("lastAutoPollAt") ?: JSONObject.NULL)
+                .put("lastAutoPollSource", core.store.data.opt("lastAutoPollSource") ?: JSONObject.NULL)
+                .put("lastAutoPollError", core.store.data.opt("lastAutoPollError") ?: JSONObject.NULL)
+                .put("autoPollStale", core.autoPollStale())
                 .put("notifyPermission", core.platform.notifyPermission())
                 .put("appVersion", core.platform.appVersion)
                 .put("dealTypes", JSONObject(types as Map<*, *>))
@@ -129,6 +174,7 @@ class Api(private val core: Core) {
                 val lawd = body.optString("lawdCd")
                 if (core.regions.get(lawd) == null) throw ApiError(400, "lawdCd가 올바르지 않습니다")
                 val (sub, recent) = core.alerts.subscribe(lawd, body.optString("complexId"), body.optString("type"))
+                core.markAutoSince()
                 core.platform.schedulePolling(core.pollIntervalMinutes())
                 JSONObject().put("subscription", JSONObject(sub.toString()).apply { remove("skipKeys") }).put("recentCount", recent)
             }

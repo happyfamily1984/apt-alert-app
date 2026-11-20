@@ -252,6 +252,38 @@ class CoreTest {
         assertEquals("🏠 테스트 아파트 매매 32억 5,000만 (84.9㎡·12층) 외 1건", shown.last().first)
     }
 
+    @Test fun autoPollRecordsAndSkipsDuplicates() {
+        val s = FakeServer()
+        s.trades += s.item(3, "300,000", 5)
+        var now = clock()
+        val c = Core(null, null, regions, s.http, { _, t, b, _ -> shown.add(t to b); true }, platform, { now })
+        // 구독이 없으면 실행 안 함
+        assertEquals(null, c.runAutoPoll("alarm"))
+        call(c, "POST", "/api/settings", """{"serviceKey":"good"}""")
+        val id = call(c, "GET", "/api/regions/11650/complexes").getJSONObject("data").getJSONArray("complexes").getJSONObject(0).getString("id")
+        call(c, "POST", "/api/subscriptions", """{"lawdCd":"11650","complexId":"$id","type":"trade"}""")
+
+        s.trades += s.item(10, "310,000", 9)
+        val r = c.runAutoPoll("periodic")
+        assertTrue(r != null && r.sent == 1)
+        val cfg = call(c, "GET", "/api/config").getJSONObject("data")
+        assertEquals("periodic", cfg.getString("lastAutoPollSource"))
+        assertTrue(cfg.isNull("lastAutoPollError"))
+
+        // 5분 뒤 알람이 또 울려도 건너뜀 (중복 확인 방지)
+        now += 5 * 60_000L
+        assertEquals(null, c.runAutoPoll("alarm"))
+        // 2시간 뒤(주기 3시간의 절반 이상)에는 다시 확인
+        now += 2 * 3600_000L
+        s.trades += s.item(11, "320,000", 10)
+        assertEquals(1, c.runAutoPoll("alarm")!!.sent)
+        assertEquals("alarm", call(c, "GET", "/api/config").getJSONObject("data").getString("lastAutoPollSource"))
+        assertFalse(call(c, "GET", "/api/config").getJSONObject("data").getBoolean("autoPollStale"))
+        // 7시간 동안 자동 확인이 없으면(주기 3시간 x2 + 30분 초과) 경고
+        now += 7 * 3600_000L
+        assertTrue(call(c, "GET", "/api/config").getJSONObject("data").getBoolean("autoPollStale"))
+    }
+
     @Test fun canceledAlertsCanBeTurnedOff() {
         val s = FakeServer()
         s.trades += s.item(3, "300,000", 5)

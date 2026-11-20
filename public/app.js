@@ -465,7 +465,8 @@ async function viewAlerts() {
     </div>
     ${config.demo && subs.length ? '<button class="btn" id="demoPoll" style="margin-top:12px;width:100%">🧪 데모: 새 실거래 발생시키기</button>' : ''}
     ${isApp && subs.length ? `<button class="cta" id="pollNow"><span class="cta-ic">${IC.refresh}</span><span class="cta-text">지금 새 실거래 확인</span><span class="cta-chev">${IC.chev}</span></button>
-      <div class="last-check">${IC.clock}마지막 확인: ${config.lastPollAt ? ago(config.lastPollAt) : '아직 없음'} <span class="dot">•</span> ${intervalLabel(config.pollIntervalMinutes)}마다 자동 확인</div>` : ''}
+      <div class="last-check">${IC.clock}마지막 자동 확인: ${config.lastAutoPollAt ? ago(config.lastAutoPollAt) : '아직 없음'} <span class="dot">•</span> ${intervalLabel(config.pollIntervalMinutes)}마다</div>
+      ${config.autoPollStale ? autoStaleCard() : ''}` : ''}
     <h3 class="sec">${IC.star}알림함</h3>
     <div class="list">${inbox.length ? inbox.map(inboxCard).join('') : '<div class="card meta">받은 알림이 없습니다</div>'}
     </div>`;
@@ -485,6 +486,7 @@ async function viewAlerts() {
     toast(`새 거래 알림 ${r.notificationsSent}건 발송`);
     viewAlerts();
   });
+  $view.querySelectorAll('[data-open-battery]').forEach((b) => (b.onclick = () => api('/api/app/open-battery-settings', { method: 'POST' })));
   $view.querySelector('#subMore')?.addEventListener('click', (ev) => {
     $view.querySelector('#subList').classList.add('expanded');
     ev.currentTarget.remove();
@@ -572,6 +574,19 @@ async function enrichInbox(inbox, subs) {
   }));
 }
 
+/** 자동 확인이 한동안 안 돌았을 때 안내 (삼성 등 절전 기능) */
+function autoStaleCard() {
+  return `<div class="card warn-card">
+    <b>⚠️ 앱이 닫혀 있을 때 자동 확인이 실행되지 않고 있어요</b>
+    <ol class="guide">
+      <li>휴대폰 <b>설정 → 애플리케이션 → 실거래 알리미 → 배터리 → '제한 없음'</b></li>
+      <li>삼성: <b>설정 → 배터리 → 백그라운드 사용 한도</b> → <b>'사용하지 않는 앱을 절전 상태로 전환'</b> 끄기, <b>'절전 예외 앱'</b>에 실거래 알리미 추가</li>
+      <li><b>설정 → 애플리케이션 → 실거래 알리미 → 모바일 데이터</b> → <b>'백그라운드 데이터 사용 허용'</b> 켜기</li>
+    </ol>
+    <button class="btn primary block" data-open-battery>앱 설정 열기</button>
+  </div>`;
+}
+
 const INBOX_PREVIEW = 6;
 function inboxCard(g) {
   const counts = Object.entries(TYPES).map(([t, l]) => [t, l, g.rows.filter((r) => r.type === t).length]).filter((x) => x[2]);
@@ -656,6 +671,9 @@ async function viewSettings() {
       <label class="field"><span>새 실거래 자동 확인 주기</span>
         <select id="interval">${INTERVALS.map((m) => `<option value="${m}" ${m === st.pollIntervalMinutes ? 'selected' : ''}>${intervalLabel(m)}마다</option>`).join('')}</select></label>
       <div class="pref-note">국토부 데이터는 보통 하루 한 번 갱신돼요. 3시간이면 충분해요.</div>
+      <div class="card-row auto-status"><span>자동 확인 상태</span><span>${config.autoPollStale ? '<b style="color:var(--danger)">⚠️ 멈춤</b>' : config.lastAutoPollAt ? `<span class="ok">✅ ${ago(config.lastAutoPollAt)} 실행</span>` : '<span class="meta">아직 기록 없음</span>'}</span></div>
+      ${config.lastAutoPollError ? `<div class="pref-note" style="color:var(--danger)">마지막 자동 확인 오류: ${esc(config.lastAutoPollError)}</div>` : ''}
+      ${config.autoPollStale ? autoStaleCard() : ''}
       <button class="btn block" id="battery">🔋 배터리 최적화 해제 (알림이 늦게 올 때)</button>
     </div>
 
@@ -855,6 +873,7 @@ async function viewSettings() {
   $view.querySelector('#askPerm').onclick = async () => { toast((await ensurePush()) ? '알림이 허용되었어요' : '알림이 허용되지 않았어요'); viewSettings(); };
   $view.querySelector('#notiSettings').onclick = () => api('/api/app/open-notification-settings', { method: 'POST' });
   $view.querySelector('#battery').onclick = () => api('/api/app/open-battery-settings', { method: 'POST' });
+  $view.querySelectorAll('[data-open-battery]').forEach((b) => (b.onclick = () => api('/api/app/open-battery-settings', { method: 'POST' })));
   $view.querySelector('#testNoti').onclick = async () => {
     const r = await api('/api/push/test', { method: 'POST' });
     toast(r.devices ? '테스트 알림을 보냈어요' : '알림 권한이 없어요');

@@ -458,3 +458,8 @@ h1, h2, h3, .sec, .price, b { letter-spacing: -0.02em; }
 .seg { border-radius: 16px; }
 .seg button { border-radius: 12px; }
 .seg button.active { color: var(--accent); font-weight: 800; }
+.warn-card { margin-top: 12px; border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent); background: color-mix(in srgb, var(--danger) 5%, var(--surface)); }
+.warn-card b { display: block; margin-bottom: 8px; }
+.warn-card .guide li b { display: inline; margin: 0; }
+.warn-card .guide { font-size: 14px; }
+.auto-status { padding-top: 4px; }

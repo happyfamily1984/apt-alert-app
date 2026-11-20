@@ -15,10 +15,15 @@ import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import android.app.AlarmManager
+import android.content.BroadcastReceiver
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.workDataOf
 import androidx.work.WorkManager
 import androidx.work.Worker
 import androidx.work.WorkerParameters
@@ -39,31 +44,86 @@ class App : Application() {
             relayOnly = BuildConfig.PROXY_URL.isNotBlank(),
         )
         (core.notifier as AndroidNotifier).ensureChannel()
+        core.markAutoSince()
         if (core.store.subscriptions.length() > 0) schedulePolling(this, core.pollIntervalMinutes(), replace = false)
+        else cancelAlarm(this)
     }
 
     companion object {
         fun core(ctx: Context) = (ctx.applicationContext as App).core
 
+        private val network = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
+
+        /**
+         * 자동 확인 예약 (두 가지를 함께 사용 → 한쪽이 미뤄져도 다른 쪽이 확인)
+         * 1) WorkManager 주기 작업  2) 절전 중에도 깨우는 알람(AlarmManager)
+         */
         fun schedulePolling(ctx: Context, minutes: Int, replace: Boolean = true) {
             val req = PeriodicWorkRequestBuilder<PollWorker>(minutes.coerceAtLeast(15).toLong(), TimeUnit.MINUTES)
-                .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+                .setConstraints(network)
+                .setInputData(workDataOf("source" to "periodic"))
                 .build()
             WorkManager.getInstance(ctx).enqueueUniquePeriodicWork(
                 "poll-deals",
                 if (replace) ExistingPeriodicWorkPolicy.UPDATE else ExistingPeriodicWorkPolicy.KEEP,
                 req,
             )
+            armAlarm(ctx, minutes)
+        }
+
+        /** 다음 알람 예약 (정확한 시각 권한이 필요 없는 방식, 절전 중에도 동작) */
+        fun armAlarm(ctx: Context, minutes: Int) {
+            val am = ctx.getSystemService(AlarmManager::class.java) ?: return
+            val at = System.currentTimeMillis() + minutes.coerceAtLeast(15) * 60_000L
+            am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, alarmIntent(ctx))
+        }
+
+        fun cancelAlarm(ctx: Context) {
+            ctx.getSystemService(AlarmManager::class.java)?.cancel(alarmIntent(ctx))
+        }
+
+        private fun alarmIntent(ctx: Context): PendingIntent = PendingIntent.getBroadcast(
+            ctx, 7001, Intent(ctx, PollAlarmReceiver::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+
+        /** 지금 한 번 확인 작업 실행 (알람·재부팅 시) */
+        fun pollSoon(ctx: Context, source: String) {
+            val req = OneTimeWorkRequestBuilder<PollWorker>()
+                .setConstraints(network)
+                .setInputData(workDataOf("source" to source))
+                .build()
+            WorkManager.getInstance(ctx).enqueueUniqueWork("poll-once", ExistingWorkPolicy.KEEP, req)
         }
     }
 }
 
-/** 백그라운드에서 주기적으로 새 실거래 확인 (WorkManager: 재부팅 후에도 유지) */
+/** 알람이 울리면 → 확인 작업 실행 + 다음 알람 예약 */
+class PollAlarmReceiver : BroadcastReceiver() {
+    override fun onReceive(ctx: Context, intent: Intent) {
+        val core = App.core(ctx)
+        if (core.store.subscriptions.length() == 0) return
+        App.pollSoon(ctx, "alarm")
+        App.armAlarm(ctx, core.pollIntervalMinutes())
+    }
+}
+
+/** 재부팅·앱 업데이트 후 자동 확인 다시 예약 */
+class BootReceiver : BroadcastReceiver() {
+    override fun onReceive(ctx: Context, intent: Intent) {
+        val core = App.core(ctx)
+        if (core.store.subscriptions.length() == 0) return
+        App.schedulePolling(ctx, core.pollIntervalMinutes(), replace = false)
+        App.pollSoon(ctx, "boot")
+    }
+}
+
+/** 백그라운드에서 새 실거래 확인 (주기 작업·알람·재부팅에서 실행) */
 class PollWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, params) {
     override fun doWork(): Result {
         val core = App.core(applicationContext)
-        if (core.store.subscriptions.length() == 0) return Result.success()
-        val r = core.alerts.poll()
+        val source = inputData.getString("source") ?: "periodic"
+        val r = core.runAutoPoll(source) ?: return Result.success() // 방금 확인했으면 건너뜀
         // 전부 실패(네트워크 등)면 잠시 후 재시도
         return if (r.groups > 0 && r.errors.size == r.groups) Result.retry() else Result.success()
     }
