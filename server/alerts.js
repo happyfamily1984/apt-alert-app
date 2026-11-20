@@ -111,8 +111,19 @@ export function createAlerts({ store, molit, service, push, now = () => new Date
   function unsubscribe(userId, id) {
     const before = db().subscriptions.length;
     db().subscriptions = db().subscriptions.filter((s) => !(s.id === id && s.userId === userId));
+    pruneOrphanNotifications(userId);
     store.save();
     return db().subscriptions.length !== before;
+  }
+
+  /** 알림을 모두 해제한 단지의 알림함 기록 삭제 (단지와 무관한 알림은 유지) */
+  function pruneOrphanNotifications(userId) {
+    const alive = new Set(db().subscriptions.filter((s) => s.userId === userId).map((s) => `${s.lawdCd}:${s.complexId}`));
+    const before = db().notifications.length;
+    db().notifications = db().notifications.filter((n) => n.userId !== userId || !n.complexId || alive.has(`${n.lawdCd}:${n.complexId}`));
+    const removed = before - db().notifications.length;
+    if (removed) store.save();
+    return removed;
   }
 
   // ----- 주기적 폴링: 새로 신고된 거래 / 해제된 거래 감지 -----
@@ -182,5 +193,5 @@ export function createAlerts({ store, molit, service, push, now = () => new Date
     return { groups: groups.size, notificationsSent: sent, errors };
   }
 
-  return { subscribe, unsubscribe, poll, notify };
+  return { subscribe, unsubscribe, poll, notify, pruneOrphanNotifications };
 }

@@ -92,3 +92,18 @@ test('없는 단지 구독은 404', async () => {
   const { alerts } = setup();
   await assert.rejects(alerts.subscribe(U, { lawdCd: '11650', complexId: 'nope', type: 'trade' }), (e) => e.status === 404);
 });
+
+test('알림을 모두 해제한 단지는 알림함에서도 삭제', async () => {
+  const { alerts, store } = setup();
+  const a = await alerts.subscribe(U, { lawdCd: '11650', complexId: CID, type: 'trade' });
+  const b = await alerts.subscribe(U, { lawdCd: '11650', complexId: CID, type: 'jeonse' });
+  store.data.notifications.push({ id: 'sys', userId: U, title: '안내', body: '', createdAt: '2026-11-01T00:00:00Z' });
+  store.data.notifications.push({ id: 'other', userId: 'someone-else', lawdCd: '11650', complexId: CID, title: 'x', body: '' });
+  const mine = () => store.data.notifications.filter((n) => n.userId === U).length;
+  assert.equal(mine(), 3);
+  alerts.unsubscribe(U, a.subscription.id);
+  assert.equal(mine(), 3); // 전세가 남아 있음
+  alerts.unsubscribe(U, b.subscription.id);
+  assert.deepEqual(store.data.notifications.filter((n) => n.userId === U).map((n) => n.id), ['sys']);
+  assert.equal(store.data.notifications.filter((n) => n.id === 'other').length, 1); // 다른 사용자 기록은 그대로
+});

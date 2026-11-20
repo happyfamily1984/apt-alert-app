@@ -106,6 +106,7 @@ export function createApp(cfg = {}) {
 
   app.get('/api/notifications', wrap(async (req, res) => {
     const uid = user(req);
+    alerts.pruneOrphanNotifications(uid); // 예전에 해제한 단지의 남은 기록 정리
     const list = db().notifications.filter((n) => n.userId === uid).reverse().slice(0, 100);
     res.json({ unread: list.filter((n) => !n.read).length, notifications: list });
   }));

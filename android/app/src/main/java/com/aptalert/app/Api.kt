@@ -183,6 +183,7 @@ class Api(private val core: Core) {
 
             // ----- 알림함 -----
             method == "GET" && r == listOf("notifications") -> synchronized(core.alerts) {
+                core.alerts.pruneOrphanNotifications() // 예전에 해제한 단지의 남은 기록 정리
                 val list = core.store.notifications.objects().reversed().take(100)
                 JSONObject().put("unread", list.count { !it.optBoolean("read") }).put("notifications", JSONArray(list.map { JSONObject(it.toString()) }))
             }

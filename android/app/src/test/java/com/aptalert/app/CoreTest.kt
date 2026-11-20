@@ -284,6 +284,29 @@ class CoreTest {
         assertTrue(call(c, "GET", "/api/config").getJSONObject("data").getBoolean("autoPollStale"))
     }
 
+    @Test fun fullyUnsubscribedComplexIsRemovedFromInbox() {
+        val s = FakeServer()
+        s.trades += s.item(3, "300,000", 5)
+        val c = core(s)
+        call(c, "POST", "/api/settings", """{"serviceKey":"good"}""")
+        val id = call(c, "GET", "/api/regions/11650/complexes").getJSONObject("data").getJSONArray("complexes").getJSONObject(0).getString("id")
+        val t = call(c, "POST", "/api/subscriptions", """{"lawdCd":"11650","complexId":"$id","type":"trade"}""").getJSONObject("data").getJSONObject("subscription").getString("id")
+        val j = call(c, "POST", "/api/subscriptions", """{"lawdCd":"11650","complexId":"$id","type":"jeonse"}""").getJSONObject("data").getJSONObject("subscription").getString("id")
+        // 단지와 무관한 알림(예: 안내)은 지우지 않아야 함
+        c.store.notifications.put(JSONObject().put("id", "sys").put("title", "안내").put("body", "").put("createdAt", "2026-11-01T00:00:00Z"))
+        // 예전에 해제한 다른 단지의 남은 기록
+        c.store.notifications.put(JSONObject().put("id", "old").put("lawdCd", "11650").put("complexId", "gone").put("title", "x").put("body", "").put("createdAt", "2026-11-01T00:00:00Z"))
+        fun count() = call(c, "GET", "/api/notifications").getJSONObject("data").getJSONArray("notifications").length()
+
+        assertEquals(3, count()) // 매매·전세 알림 시작 2 + 안내 1 (해제된 단지 기록은 열 때 정리됨)
+        call(c, "DELETE", "/api/subscriptions/$t")
+        assertEquals(3, count()) // 전세가 남아 있으니 유지
+        call(c, "DELETE", "/api/subscriptions/$j")
+        val left = call(c, "GET", "/api/notifications").getJSONObject("data").getJSONArray("notifications")
+        assertEquals(1, left.length())
+        assertEquals("sys", left.getJSONObject(0).getString("id"))
+    }
+
     @Test fun canceledAlertsCanBeTurnedOff() {
         val s = FakeServer()
         s.trades += s.item(3, "300,000", 5)

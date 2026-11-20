@@ -114,7 +114,9 @@ function ago(iso) {
   if (s < 60) return '방금';
   if (s < 3600) return `${Math.floor(s / 60)}분 전`;
   if (s < 86400) return `${Math.floor(s / 3600)}시간 전`;
-  return new Date(iso).toLocaleDateString('ko-KR');
+  if (s < 7 * 86400) return `${Math.floor(s / 86400)}일 전`;
+  const d = new Date(iso);
+  return `${d.getMonth() + 1}/${d.getDate()}`;
 }
 let toastTimer;
 function toast(msg) {

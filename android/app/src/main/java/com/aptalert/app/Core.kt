@@ -247,11 +247,34 @@ class Alerts(
         for (i in 0 until list.length()) {
             if (list.getJSONObject(i).getString("id") == id) {
                 list.remove(i)
+                pruneOrphanNotifications()
                 store.save()
                 return true
             }
         }
         return false
+    }
+
+    /**
+     * 알림을 모두 해제한 단지의 알림함 기록 삭제.
+     * (매매·전세·월세 중 하나라도 남아 있으면 유지, 단지와 무관한 알림은 유지)
+     * @return 지운 개수
+     */
+    @Synchronized
+    fun pruneOrphanNotifications(): Int {
+        val alive = store.subscriptions.objects().map { "${it.getString("lawdCd")}:${it.getString("complexId")}" }.toSet()
+        val list = store.notifications
+        var removed = 0
+        for (i in list.length() - 1 downTo 0) {
+            val n = list.getJSONObject(i)
+            val cid = n.optString("complexId")
+            if (cid.isNotEmpty() && "${n.optString("lawdCd")}:$cid" !in alive) {
+                list.remove(i)
+                removed++
+            }
+        }
+        if (removed > 0) store.save()
+        return removed
     }
 
     data class PollResult(val groups: Int, val sent: Int, val errors: List<Pair<String, String>>)
