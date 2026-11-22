@@ -16,6 +16,12 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
+import androidx.activity.enableEdgeToEdge
+import android.view.View
+import android.widget.LinearLayout
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
@@ -31,6 +37,9 @@ class MainActivity : ComponentActivity() {
     }
 
     private lateinit var web: WebView
+    // 안드로이드 15+ 는 화면이 상태바·내비게이션 바 아래까지 그려짐 → 그 자리를 채우는 띠
+    private lateinit var statusSpacer: View
+    private lateinit var navSpacer: View
     private val executor = Executors.newFixedThreadPool(3)
     private var pendingPermissionCall: Int? = null
     private var pageReady = false
@@ -89,7 +98,12 @@ class MainActivity : ComponentActivity() {
 
     /** 상태바 색·글자 크기를 설정에 맞춤 */
     private fun applyAppearance(accentHex: String, dark: Boolean, textZoom: Int) {
-        runCatching { window.statusBarColor = Color.parseColor(accentHex) }
+        runCatching { statusSpacer.setBackgroundColor(Color.parseColor(accentHex)) }
+        navSpacer.setBackgroundColor(Color.parseColor(if (dark) "#181B21" else "#FFFFFF"))
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            isAppearanceLightStatusBars = false // 강조색 위 흰 아이콘
+            isAppearanceLightNavigationBars = !dark
+        }
         web.settings.textZoom = textZoom.coerceIn(70, 160)
         web.setBackgroundColor(Color.parseColor(if (dark) "#0F1115" else "#F5F6F8"))
     }
@@ -97,7 +111,7 @@ class MainActivity : ComponentActivity() {
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.statusBarColor = Color.parseColor("#2563EB")
+        enableEdgeToEdge()
 
         val loader = WebViewAssetLoader.Builder()
             .setDomain(HOST)
@@ -128,7 +142,24 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-        setContentView(web)
+        statusSpacer = View(this).apply { setBackgroundColor(Color.parseColor("#2563EB")) }
+        navSpacer = View(this).apply { setBackgroundColor(Color.WHITE) }
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(statusSpacer, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0))
+            addView(web, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+            addView(navSpacer, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0))
+        }
+        // 상태바·내비게이션 바·화면 노치·키보드 높이만큼 비워서 내용이 가려지지 않게
+        ViewCompat.setOnApplyWindowInsetsListener(root) { v, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+            val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
+            statusSpacer.layoutParams = statusSpacer.layoutParams.apply { height = bars.top }
+            navSpacer.layoutParams = navSpacer.layoutParams.apply { height = maxOf(bars.bottom, ime.bottom) }
+            v.setPadding(bars.left, 0, bars.right, 0)
+            WindowInsetsCompat.CONSUMED
+        }
+        setContentView(root)
         Prefs.get(App.core(this).store.settings).let { p ->
             val dark = when (p.optString("theme")) {
                 "dark" -> true

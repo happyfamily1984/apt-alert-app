@@ -463,3 +463,17 @@ h1, h2, h3, .sec, .price, b { letter-spacing: -0.02em; }
 .warn-card .guide li b { display: inline; margin: 0; }
 .warn-card .guide { font-size: 14px; }
 .auto-status { padding-top: 4px; }
+/* 홈 배너 위 앱 이름 (그림 속 집 오른쪽) */
+body[data-page="home"] .hero-brand { top: 24%; left: 21.5%; right: 4%; gap: 0; }
+body[data-page="home"] .hero-logo { display: none; }
+body[data-page="home"] .hero-brand h2 { font-size: clamp(18px, 5.6vw, 30px); line-height: 1.15; white-space: nowrap; }
+body[data-page="home"] .hero-brand p { font-size: clamp(11px, 3.2vw, 15px); margin-top: 6px; }
+/* 앱 정보 */
+.info-list { padding: 4px 16px; }
+.info-list a { display: flex; align-items: center; justify-content: space-between; padding: 14px 0; border-bottom: 1px solid var(--line); font-weight: 600; }
+.info-list a:last-child { border-bottom: 0; }
+.info-list .ic { color: var(--muted); }
+.doc h3 { font-size: 16px; font-weight: 800; color: var(--ink); margin: 18px 0 6px; }
+.doc p { margin: 0 0 10px; line-height: 1.65; }
+.license { white-space: pre-wrap; font-size: 11px; background: var(--surface-2); padding: 10px; border-radius: 10px; max-height: 320px; overflow: auto; }
+.legal-foot { display: block; text-align: center; font-size: 12px; color: var(--muted); margin-top: 16px; }

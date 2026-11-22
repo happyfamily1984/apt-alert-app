@@ -4,7 +4,7 @@
 
 const NAMES_A = ['래미안', '자이', '힐스테이트', '푸르지오', '아이파크', 'e편한세상', '롯데캐슬', '더샵', '센트레빌', '현대', '삼성', '한신', '우성', '극동', '쌍용'];
 const NAMES_B = ['퍼스티지', '파크', '센트럴', '리버뷰', '에듀포레', '1차', '2차', '3단지', '레이크', '포레스트', '시티', '하이츠', '프레스티지', ''];
-const DONGS = ['신', '중앙', '서', '동', '남', '북', '대', '상', '하', '송', '도', '반'];
+const DONGS = ['대치동', '개포동', '도곡동', '역삼동', '삼성동', '청담동', '압구정동', '논현동', '일원동', '수서동'];
 const AREAS = [39.6, 49.94, 59.97, 74.89, 84.97, 101.2, 114.8, 134.9];
 
 function hash(s) {
@@ -39,7 +39,7 @@ export function demoComplexes(lawdCd) {
     used.add(aptNm);
     list.push({
       aptNm,
-      umdNm: `${pick(r, DONGS)}${pick(r, ['동', '1동', '2동'])}`.replace(/(\d)동$/, '$1가'),
+      umdNm: pick(r, DONGS),
       jibun: String(100 + Math.floor(r() * 900)),
       buildYear: 1986 + Math.floor(r() * 38),
       areas: AREAS.filter(() => r() < 0.45).slice(0, 4).concat([84.97]).filter((v, j, a) => a.indexOf(v) === j),

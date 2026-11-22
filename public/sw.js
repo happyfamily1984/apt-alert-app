@@ -4,9 +4,9 @@ self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
 
 self.addEventListener('push', (event) => {
   let data = {};
-  try { data = event.data ? event.data.json() : {}; } catch { data = { title: '실거래 알리미', body: event.data && event.data.text() }; }
+  try { data = event.data ? event.data.json() : {}; } catch { data = { title: '아파트 실거래가 알리미', body: event.data && event.data.text() }; }
   event.waitUntil(
-    self.registration.showNotification(data.title || '실거래 알리미', {
+    self.registration.showNotification(data.title || '아파트 실거래가 알리미', {
       body: data.body || '',
       icon: '/icon-192.png',
       badge: '/icon-192.png',

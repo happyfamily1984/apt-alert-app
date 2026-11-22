@@ -1,4 +1,5 @@
-// 아파트 실거래 알리미 - 프런트엔드 (프레임워크 없는 SPA, 해시 라우팅)
+import { LEGAL, PRIVACY_SECTIONS, DISCLAIMER } from './legal.js';
+// 아파트 실거래가 알리미 - 프런트엔드 (프레임워크 없는 SPA, 해시 라우팅)
 const TYPES = { trade: '매매', jeonse: '전세', monthly: '월세' };
 const $view = document.getElementById('view');
 const $title = document.getElementById('title');
@@ -132,7 +133,7 @@ const showError = (e) => { $view.innerHTML = errorHtml(e); };
 
 function setHeader(title, back) {
   $title.textContent = title;
-  document.title = title === '실거래 알리미' ? title : `${title} · 실거래 알리미`;
+  document.title = title === '아파트 실거래가 알리미' ? title : `${title} · 아파트 실거래가 알리미`;
   $back.hidden = !back;
   $back.onclick = () => (history.length > 1 ? history.back() : (location.hash = back));
 }
@@ -171,7 +172,7 @@ async function refreshUnread() {
 // ---------- 화면: 시군구 선택 ----------
 let regionsCache;
 async function viewHome() {
-  setHeader('실거래 알리미');
+  setHeader('아파트 실거래가 알리미');
   loading();
   regionsCache ||= await api('/api/regions');
   const sido = store.get('sido') || '서울특별시';
@@ -195,6 +196,7 @@ async function viewHome() {
         <span>관심 지역을 선택하고<br />실거래가 알림을 받아보세요!</span>
         <span class="round-chev">${IC.chev}</span>
       </a>
+      <a class="legal-foot" href="#/about">국토교통부 공공데이터를 활용한 앱이며, 정부기관과 관련이 없습니다 ›</a>
       </div>`;
     $view.querySelector('#sidoChips .active')?.scrollIntoView({ inline: 'center', block: 'nearest' });
     $view.querySelectorAll('[data-sido]').forEach((b) => (b.onclick = () => { store.set('sido', b.dataset.sido); render(b.dataset.sido); }));
@@ -581,9 +583,9 @@ function autoStaleCard() {
   return `<div class="card warn-card">
     <b>⚠️ 앱이 닫혀 있을 때 자동 확인이 실행되지 않고 있어요</b>
     <ol class="guide">
-      <li>휴대폰 <b>설정 → 애플리케이션 → 실거래 알리미 → 배터리 → '제한 없음'</b></li>
-      <li>삼성: <b>설정 → 배터리 → 백그라운드 사용 한도</b> → <b>'사용하지 않는 앱을 절전 상태로 전환'</b> 끄기, <b>'절전 예외 앱'</b>에 실거래 알리미 추가</li>
-      <li><b>설정 → 애플리케이션 → 실거래 알리미 → 모바일 데이터</b> → <b>'백그라운드 데이터 사용 허용'</b> 켜기</li>
+      <li>휴대폰 <b>설정 → 애플리케이션 → 아파트 실거래가 알리미 → 배터리 → '제한 없음'</b></li>
+      <li>삼성: <b>설정 → 배터리 → 백그라운드 사용 한도</b> → <b>'사용하지 않는 앱을 절전 상태로 전환'</b> 끄기, <b>'절전 예외 앱'</b>에 아파트 실거래가 알리미 추가</li>
+      <li><b>설정 → 애플리케이션 → 아파트 실거래가 알리미 → 모바일 데이터</b> → <b>'백그라운드 데이터 사용 허용'</b> 켜기</li>
     </ol>
     <button class="btn primary block" data-open-battery>앱 설정 열기</button>
   </div>`;
@@ -737,7 +739,14 @@ async function viewSettings() {
       <p class="meta" style="margin:8px 0 0">승인 직후에는 키가 활성화되기까지 1~2시간 걸릴 수 있어요. 테스트가 실패하면 잠시 후 다시 해보세요.</p>
       </div>
     </details>
-    <p class="meta" style="margin:16px 4px">앱 버전 ${esc(config.appVersion || '')} · 데이터 출처: 국토교통부 실거래가 공개시스템</p>`;
+    <div class="section-title">앱 정보</div>
+    <div class="card info-list">
+      <a href="#/privacy"><span>개인정보처리방침</span>${IC.chev}</a>
+      <a href="#/about"><span>데이터 출처 및 면책 안내</span>${IC.chev}</a>
+      <a href="#/licenses"><span>오픈소스 라이선스</span>${IC.chev}</a>
+      ${LEGAL.contactEmail.includes('@') ? `<a href="mailto:${esc(LEGAL.contactEmail)}"><span>문의하기</span><span class="meta">${esc(LEGAL.contactEmail)}</span></a>` : ''}
+    </div>
+    <p class="meta" style="margin:16px 4px">${esc(LEGAL.appName)} ${esc(config.appVersion || '')} · 데이터 출처: 국토교통부(공공데이터포털) · 정부기관과 무관</p>`;
 
   const okMsg = (r) => `<span class="ok">✅ 연결 성공!</span> 매매 ${r.trade}건 · 전월세 ${r.rent}건 확인 (서울 강남구 지난달)`;
   const failMsg = (e) => `<span style="color:var(--danger)">❌ ${esc(e.message)}</span>`;
@@ -785,7 +794,7 @@ async function viewSettings() {
       : '🏠 예시 래미안아파트 새 실거래 2건 (매매 1 · 전세 1)';
     const lines = ['[매매] 84.94㎡ 29층 · 32억 · 11/10', '[전세] 59.98㎡ 12층 · 13억 5,000만 · 11/08'];
     const head = (extra = '') => `<div class="pv-head"><span class="pv-icon" style="background:${color}">${iconSvg(P.notiIcon)}</span>
-      <span style="color:${color};font-weight:700">실거래 알리미</span><span class="meta">· 지금</span>${extra}</div>`;
+      <span style="color:${color};font-weight:700">아파트 실거래가 알리미</span><span class="meta">· 지금</span>${extra}</div>`;
     const noti = (cls = '', expanded = P.notiDetail === 'detail') => `<div class="pv-noti ${cls}">
       ${head(expanded ? '<span class="pv-expand">⌃</span>' : '<span class="pv-expand">⌄</span>')}
       <b class="pv-title ${expanded ? '' : 'one'}">${title}</b>
@@ -805,7 +814,7 @@ async function viewSettings() {
         <span class="label">② 잠금화면</span>
         <div class="pv-phone"><div class="pv-lock"><div class="pv-clock">${hhmm}</div>
           ${P.notiLockscreen === 'hide'
-            ? `<div class="pv-noti flat">${head()}<b class="pv-title one">실거래 알리미</b><div class="pv-body one">새 실거래 알림이 있어요</div></div>`
+            ? `<div class="pv-noti flat">${head()}<b class="pv-title one">아파트 실거래가 알리미</b><div class="pv-body one">새 실거래 알림이 있어요</div></div>`
             : noti('flat', false)}
         </div></div>
 
@@ -882,6 +891,35 @@ async function viewSettings() {
   };
 }
 
+// ---------- 화면: 개인정보처리방침 · 면책 · 라이선스 ----------
+function viewPrivacy() {
+  setHeader('개인정보처리방침', '#/settings');
+  $view.innerHTML = `<div class="card doc">
+    <p class="meta">${esc(LEGAL.appName)} · 시행일 ${esc(LEGAL.effectiveDate)}</p>
+    ${PRIVACY_SECTIONS.map(([h, b]) => `<h3>${esc(h)}</h3><p>${esc(b).replace(/\n/g, '<br>')}</p>`).join('')}
+    <h3>9. 문의</h3><p>${LEGAL.contactEmail.includes('@') ? esc(LEGAL.contactEmail) : '스토어 페이지의 개발자 연락처로 문의해 주세요.'}</p>
+  </div>`;
+}
+
+function viewAbout() {
+  setHeader('데이터 출처 및 면책', '#/settings');
+  $view.innerHTML = `<div class="card doc">
+    ${DISCLAIMER.map((t) => `<p>${esc(t)}</p>`).join('')}
+    <p><a class="link" href="https://www.data.go.kr" target="_blank" rel="noopener">공공데이터포털 바로가기</a></p>
+  </div>`;
+}
+
+async function viewLicenses() {
+  setHeader('오픈소스 라이선스', '#/settings');
+  loading();
+  const ofl = await fetch('fonts/Pretendard-LICENSE.txt').then((r) => r.text()).catch(() => 'SIL Open Font License 1.1');
+  $view.innerHTML = `<div class="card doc">
+    <h3>Pretendard (글꼴)</h3><p class="meta">SIL Open Font License 1.1</p><pre class="license">${esc(ofl)}</pre>
+    <h3>AndroidX (Core, Activity, WebKit, WorkManager)</h3><p class="meta">Apache License 2.0 · https://www.apache.org/licenses/LICENSE-2.0</p>
+    <h3>Kotlin</h3><p class="meta">Apache License 2.0</p>
+  </div>`;
+}
+
 // ---------- 라우터 ----------
 async function route() {
   const [path, query] = (location.hash.slice(1) || '/').split('?');
@@ -892,7 +930,7 @@ async function route() {
   document.body.classList.toggle('has-hero', Boolean(heroMode));
   document.body.dataset.page = parts[0] || 'home';
   document.getElementById('hero').hidden = !heroMode;
-  document.getElementById('heroBrand').hidden = true; // 홈 배너 그림에 제목이 들어 있음
+  document.getElementById('heroBrand').hidden = heroMode !== 'home'; // 홈 배너: 그림 위에 앱 이름
   const tab = ['alerts', 'settings'].includes(parts[0]) ? parts[0] : 'search';
   document.querySelectorAll('.tabbar a').forEach((a) => a.classList.toggle('active', a.dataset.tab === tab));
   window.scrollTo(0, 0);
@@ -901,6 +939,9 @@ async function route() {
     else if (parts[0] === 'complex' && parts[2]) await viewComplex(parts[1], parts[2], params);
     else if (parts[0] === 'alerts') await viewAlerts();
     else if (parts[0] === 'settings' && isApp) await viewSettings();
+    else if (parts[0] === 'privacy') viewPrivacy();
+    else if (parts[0] === 'about') viewAbout();
+    else if (parts[0] === 'licenses') await viewLicenses();
     else await viewHome();
   } catch (e) {
     showError(e);

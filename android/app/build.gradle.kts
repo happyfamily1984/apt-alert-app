@@ -14,14 +14,14 @@ fun signingValue(name: String): String? = keystoreProps.getProperty(name) ?: Sys
 
 android {
     namespace = "com.aptalert.app"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.aptalert.app"
         minSdk = 26
-        targetSdk = 35
-        versionCode = (System.getenv("VERSION_CODE") ?: "14").toInt()
-        versionName = System.getenv("VERSION_NAME") ?: "1.3.2"
+        targetSdk = 36
+        versionCode = (System.getenv("VERSION_CODE") ?: "15").toInt()
+        versionName = System.getenv("VERSION_NAME") ?: "1.4.0"
 
         // 기본 중계 서버 주소: 환경변수 PROXY_URL 또는 android/proxy.properties 의 url=
         val proxyProps = Properties().apply {

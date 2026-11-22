@@ -1,6 +1,6 @@
 {
-  "name": "아파트 실거래 알리미",
-  "short_name": "실거래 알리미",
+  "name": "아파트 실거래가 알리미",
+  "short_name": "실거래가 알리미",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f5f6f8",

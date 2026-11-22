@@ -70,3 +70,21 @@ test('키 오류는 JSON 에러, 키 미설정·토큰 불일치 차단', async 
   assert.equal((await worker.fetch(req('/molit/trade?LAWD_CD=11650&DEAL_YMD=202401'), { MOLIT_KEY: 'k', APP_TOKEN: 't' }, ctx)).status, 403);
   assert.equal((await worker.fetch(req('/molit/trade?LAWD_CD=11650&DEAL_YMD=202401', { 'X-App-Token': 't' }), { MOLIT_KEY: 'k', APP_TOKEN: 't' }, ctx)).status, 200);
 });
+
+test('개인정보처리방침 페이지', async () => {
+  const r = await worker.fetch(req('/privacy'), {}, ctx);
+  assert.equal(r.status, 200);
+  const html = await r.text();
+  assert.match(html, /아파트 실거래가 알리미 개인정보처리방침/);
+  assert.match(html, /수집하는 개인정보/);
+});
+
+test('같은 IP 과도한 호출 차단', async () => {
+  const env = { MOLIT_KEY: 'k' };
+  const h = { 'CF-Connecting-IP': '203.0.113.9' };
+  let last;
+  for (let i = 0; i < 125; i++) last = await worker.fetch(req('/molit/trade?LAWD_CD=11650&DEAL_YMD=202401', h), env, ctx);
+  assert.equal(last.status, 429);
+  const other = await worker.fetch(req('/molit/trade?LAWD_CD=11650&DEAL_YMD=202401', { 'CF-Connecting-IP': '203.0.113.10' }), env, ctx);
+  assert.equal(other.status, 200);
+});

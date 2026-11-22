@@ -1,4 +1,4 @@
-// 실거래 알리미 중계 서버 (Cloudflare Worker)
+// 아파트 실거래가 알리미 중계 서버 (Cloudflare Worker)
 // - 국토교통부 API 키는 서버(Secret: MOLIT_KEY)에만 보관 → 앱 사용자는 키 없이 사용
 // - 결과를 캐시해서 사용자가 늘어도 국토부 호출 수는 "지역 수"만큼만 증가
 //   (메모리 → Cache API(사용자 도메인일 때) → KV(CACHE 바인딩이 있을 때) 순서로 확인)
@@ -12,6 +12,31 @@
 //           GET /molit/rent?...   (응답은 국토부 XML 그대로)
 
 // 매매는 기본 API가 막히면(활용신청 안 됨) '상세 자료' API로 자동 재시도
+import { LEGAL, PRIVACY_SECTIONS, DISCLAIMER } from '../public/legal.js';
+
+// 같은 IP에서 1분에 너무 많이 부르면 잠시 차단 (서버 인스턴스별, 앱 정상 사용량의 몇 배 여유)
+const RATE_LIMIT = 120;
+const rate = new Map(); // ip -> { n, reset }
+function limited(ip, now = Date.now()) {
+  let r = rate.get(ip);
+  if (!r || r.reset < now) { r = { n: 0, reset: now + 60_000 }; rate.set(ip, r); }
+  r.n++;
+  if (rate.size > 5000) for (const [k, v] of rate) if (v.reset < now) rate.delete(k);
+  return r.n > RATE_LIMIT;
+}
+
+const escHtml = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+function privacyPage() {
+  const contact = LEGAL.contactEmail.includes('@') ? escHtml(LEGAL.contactEmail) : '스토어 페이지의 개발자 연락처로 문의해 주세요.';
+  const body = PRIVACY_SECTIONS.map(([h, b]) => `<h2>${escHtml(h)}</h2><p>${escHtml(b).replace(/\n/g, '<br>')}</p>`).join('');
+  return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${escHtml(LEGAL.appName)} 개인정보처리방침</title>
+<style>body{font-family:-apple-system,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;max-width:720px;margin:0 auto;padding:24px 18px 48px;line-height:1.7;color:#16213e;background:#f5f7fb}
+h1{font-size:22px;margin:0 0 4px}h2{font-size:17px;margin:26px 0 6px;color:#15307a}.meta{color:#6b7591;font-size:14px}.card{background:#fff;border-radius:16px;padding:6px 20px 18px;box-shadow:0 4px 16px rgba(28,58,140,.08)}</style></head>
+<body><h1>${escHtml(LEGAL.appName)} 개인정보처리방침</h1><p class="meta">시행일 ${escHtml(LEGAL.effectiveDate)}</p>
+<div class="card">${body}<h2>9. 문의</h2><p>${contact}</p><h2>10. 데이터 출처</h2>${DISCLAIMER.map((t) => `<p>${escHtml(t)}</p>`).join('')}</div></body></html>`;
+}
+
 const UPSTREAM = {
   trade: [
     'https://apis.data.go.kr/1613000/RTMSDataSvcAptTrade/getRTMSDataSvcAptTrade',
@@ -23,7 +48,7 @@ const API_NAME = {
   trade: '「국토교통부_아파트 매매 실거래가 자료」',
   rent: '「국토교통부_아파트 전월세 실거래가 자료」',
 };
-const VERSION = '1.2.0';
+const VERSION = '1.3.0';
 let preferred = { trade: 0, rent: 0 }; // 마지막으로 성공한 주소 기억
 const mem = new Map(); // 같은 서버 인스턴스 안에서의 초고속 캐시
 
@@ -50,6 +75,10 @@ export default {
     const url = new URL(request.url);
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
 
+    if (url.pathname === '/privacy' || url.pathname === '/privacy/') {
+      return new Response(privacyPage(), { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=3600' } });
+    }
+
     if (url.pathname === '/' || url.pathname === '/health') {
       return json({ ok: true, service: 'apt-alert-proxy', version: VERSION, keyConfigured: Boolean(env.MOLIT_KEY), kvCache: Boolean(env.CACHE) });
     }
@@ -57,6 +86,8 @@ export default {
     const m = url.pathname.match(/^\/molit\/(trade|rent)\/?$/);
     if (!m) return json({ error: '없는 주소입니다' }, 404);
     if (request.method !== 'GET') return json({ error: 'GET만 지원합니다' }, 405);
+    const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+    if (limited(ip)) return json({ error: '요청이 너무 많아요. 1분 뒤 다시 시도해 주세요.' }, 429);
     if (env.APP_TOKEN && request.headers.get('X-App-Token') !== env.APP_TOKEN) {
       return json({ error: '중계 서버 접근 토큰이 맞지 않아요' }, 403);
     }

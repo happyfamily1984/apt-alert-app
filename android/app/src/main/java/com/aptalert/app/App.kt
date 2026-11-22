@@ -216,7 +216,7 @@ class AndroidNotifier(private val ctx: Context) : Notifier {
             builder.setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             builder.setPublicVersion(
                 NotificationCompat.Builder(ctx, channel).setSmallIcon(icon).setColor(color)
-                    .setContentTitle("실거래 알리미").setContentText("새 실거래 알림이 있어요").build(),
+                    .setContentTitle("아파트 실거래가 알리미").setContentText("새 실거래 알림이 있어요").build(),
             )
         } else {
             builder.setVisibility(NotificationCompat.VISIBILITY_PUBLIC)

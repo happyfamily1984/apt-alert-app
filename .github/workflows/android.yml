@@ -47,24 +47,28 @@ jobs:
           PROXY_URL: ${{ vars.PROXY_URL }}
           PROXY_TOKEN: ${{ secrets.PROXY_TOKEN }}
         run: |
-          # 직접 배포한 1.1.0(versionCode 2)보다 항상 높게
-          export VERSION_CODE=$((GITHUB_RUN_NUMBER + 10))
-          export VERSION_NAME="1.2.$GITHUB_RUN_NUMBER"
+          # 버전 코드·이름은 app/build.gradle.kts 의 값 사용 (Play 업로드 순서와 맞추기 위해)
+          VERSION_NAME=$(grep -oP 'VERSION_NAME"\) \?: "\K[^"]+' app/build.gradle.kts)
           echo "VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
           chmod +x gradlew
-          ./gradlew testReleaseUnitTest assembleRelease --no-daemon
+          ./gradlew testReleaseUnitTest assembleRelease bundleRelease --no-daemon
           cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/apt-alert-$VERSION_NAME.apk"
+          cp app/build/outputs/bundle/release/app-release.aab "$RUNNER_TEMP/apt-alert-$VERSION_NAME.aab"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: apt-alert-apk
-          path: ${{ runner.temp }}/apt-alert-*.apk
+          name: apt-alert-${{ env.VERSION_NAME }}
+          path: |
+            ${{ runner.temp }}/apt-alert-*.apk
+            ${{ runner.temp }}/apt-alert-*.aab
 
       - name: Releases에 업로드
         if: steps.sign.outputs.signed == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ env.VERSION_NAME }}
-          name: 실거래 알리미 ${{ env.VERSION_NAME }}
+          tag_name: v${{ env.VERSION_NAME }}-build${{ github.run_number }}
+          name: 아파트 실거래가 알리미 ${{ env.VERSION_NAME }} (빌드 ${{ github.run_number }})
           body: 휴대폰에서 아래 APK 파일을 눌러 다운로드 → 설치하세요. 기존 앱 위에 덮어 설치하면 설정·구독이 유지됩니다.
-          files: ${{ runner.temp }}/apt-alert-*.apk
+          files: |
+            ${{ runner.temp }}/apt-alert-*.apk
+            ${{ runner.temp }}/apt-alert-*.aab
