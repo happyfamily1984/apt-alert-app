@@ -88,3 +88,31 @@ test('같은 IP 과도한 호출 차단', async () => {
   const other = await worker.fetch(req('/molit/trade?LAWD_CD=11650&DEAL_YMD=202401', { 'CF-Connecting-IP': '203.0.113.10' }), env, ctx);
   assert.equal(other.status, 200);
 });
+
+test('국토부 서버 장애: 재시도, 실패 시 안내 문구, 받아 둔 자료가 있으면 대신 응답', async () => {
+  const env = { MOLIT_KEY: 'k' };
+  let fail = 2;
+  globalThis.fetch = async (u) => { calls.push(String(u)); if (fail-- > 0) return new Response('error code: 522', { status: 522 }); return new Response(OK); };
+  const r1 = await worker.fetch(req('/molit/trade?LAWD_CD=11300&DEAL_YMD=202405'), env, ctx);
+  assert.equal(r1.status, 200); // 두 번 실패 후 세 번째(http)에서 성공
+  assert.equal(calls.length, 3);
+  assert.match(calls[2], /^http:\/\//);
+
+  globalThis.fetch = async () => new Response('error code: 522', { status: 522 });
+  const r2 = await worker.fetch(req('/molit/trade?LAWD_CD=11301&DEAL_YMD=202405'), env, ctx);
+  assert.equal(r2.status, 503);
+  assert.match((await r2.json()).error, /응답하지 않아요/);
+
+  // 예전에 받은 자료는 메모리 캐시가 만료돼도 장애 시 STALE로 응답
+  globalThis.fetch = async () => { throw new Error('timeout'); };
+  const ym = (() => { const d = new Date(Date.now() + 9 * 3600e3); return `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}`; })();
+  globalThis.fetch = async () => new Response(OK);
+  await worker.fetch(req(`/molit/rent?LAWD_CD=11302&DEAL_YMD=${ym}`), env, ctx);
+  const realNow = Date.now; Date.now = () => realNow() + 2 * 3600e3; // 2시간 뒤 (최근 자료 캐시 30분 만료)
+  try {
+    globalThis.fetch = async () => { throw new Error('timeout'); };
+    const r3 = await worker.fetch(req(`/molit/rent?LAWD_CD=11302&DEAL_YMD=${ym}`), env, ctx);
+    assert.equal(r3.status, 200);
+    assert.equal(r3.headers.get('X-Cache'), 'STALE');
+  } finally { Date.now = realNow; }
+});

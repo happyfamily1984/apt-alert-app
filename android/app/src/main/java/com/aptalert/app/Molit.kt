@@ -251,8 +251,10 @@ class MolitClient(
             if (!trimmed.startsWith("<")) {
                 throw MolitException(
                     when {
-                        k.isEmpty() -> "중계 서버에 연결하지 못했어요 (HTTP $status). 주소를 확인해 주세요."
+                        k.isEmpty() && status >= 500 -> "서버가 잠시 응답하지 않아요. 잠시 후 다시 시도해 주세요."
+                        k.isEmpty() -> "중계 서버에 연결하지 못했어요 (HTTP $status)."
                         status == 401 || status == 403 || body.contains("Unauthorized", true) -> Molit.friendly("SERVICE_KEY_IS_NOT_REGISTERED", "30")
+                        status >= 500 -> "국토부 서버(공공데이터포털)가 지금 응답하지 않아요. 잠시 후 다시 시도해 주세요."
                         else -> "국토부 서버 오류 (HTTP $status). 잠시 후 다시 시도해 주세요."
                     },
                 )
@@ -267,6 +269,29 @@ class MolitClient(
 
     private fun diskFile(ck: String) = cacheDir?.let { File(it, "molit/${ck.replace(':', '_')}.json") }
 
+    private fun readDisk(ck: String): Pair<Long, List<Deal>>? = diskFile(ck)?.takeIf { it.exists() }?.let { f ->
+        runCatching {
+            val o = JSONObject(f.readText())
+            val arr = o.getJSONArray("deals")
+            o.getLong("at") to (0 until arr.length()).map { Deal.fromJson(arr.getJSONObject(it)) }
+        }.getOrNull()
+    }
+
+    // 국토부 서버 장애로 '마지막으로 받은 자료'를 대신 보여준 기록 (화면에 안내 표시용)
+    private val seq = java.util.concurrent.atomic.AtomicLong()
+    private val staleServed = ConcurrentHashMap<String, Long>()
+
+    /** 요청 시작 표시. 이후 [servedStaleSince]로 이 요청 중 대체 자료를 썼는지 확인 */
+    fun mark(): Long = seq.incrementAndGet()
+
+    fun servedStaleSince(lawdCd: String, mark: Long): Boolean =
+        staleServed.any { (k, v) -> v > mark && k.split(":")[1] == lawdCd }
+
+    /**
+     * 한 달치 거래 조회.
+     * - force=false(화면 표시): 캐시 사용, 국토부 서버 장애 시 마지막으로 받은 자료로 대체
+     * - force=true(새 거래 자동 확인): 항상 새로 받고, 실패하면 오류 (예전 자료로 판단하지 않음)
+     */
     fun fetchMonth(api: String, lawdCd: String, ym: String, force: Boolean = false): List<Deal> {
         val ck = "$api:$lawdCd:$ym"
         val recent = ym in Molit.recentYms(2, today())
@@ -274,21 +299,26 @@ class MolitClient(
         val now = clock()
         if (!force) {
             mem[ck]?.let { if (now - it.first < ttl) return it.second }
-            if (!recent) diskFile(ck)?.takeIf { it.exists() }?.let { f ->
-                runCatching {
-                    val o = JSONObject(f.readText())
-                    if (now - o.getLong("at") < ttl) {
-                        val arr = o.getJSONArray("deals")
-                        val deals = (0 until arr.length()).map { Deal.fromJson(arr.getJSONObject(it)) }
-                        mem[ck] = o.getLong("at") to deals
-                        return deals
-                    }
+            if (!recent) readDisk(ck)?.let { (at, deals) ->
+                if (now - at < ttl) {
+                    mem[ck] = at to deals
+                    return deals
                 }
             }
         }
-        val deals = fetchLive(api, lawdCd, ym)
+        val deals = try {
+            fetchLive(api, lawdCd, ym)
+        } catch (e: ApiError) {
+            // 설정 문제(400)가 아닌 서버·네트워크 장애면 받아 둔 자료로 대체
+            if (force || e.status == 400) throw e
+            val old = mem[ck] ?: readDisk(ck) ?: throw e
+            staleServed[ck] = seq.incrementAndGet()
+            return old.second
+        }
         mem[ck] = now to deals
-        if (!recent) diskFile(ck)?.let { f ->
+        staleServed.remove(ck)
+        // 최근 자료도 디스크에 남겨 둠 (장애 시 대체용, 평소엔 최근 자료는 1시간마다 새로 받음)
+        diskFile(ck)?.let { f ->
             runCatching {
                 f.parentFile?.mkdirs()
                 f.writeText(JSONObject().put("at", now).put("deals", JSONArray(deals.map { it.toJson() })).toString())

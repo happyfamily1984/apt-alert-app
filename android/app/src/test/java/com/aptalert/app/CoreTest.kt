@@ -59,9 +59,11 @@ class CoreTest {
         fun item(day: Int, amount: String, floor: Int, canceled: Boolean = false) =
             "<item><aptNm>테스트 아파트</aptNm><umdNm>반포동</umdNm><jibun>1</jibun><buildYear>2009</buildYear><dealYear>2026</dealYear><dealMonth>11</dealMonth><dealDay>$day</dealDay><dealAmount>$amount</dealAmount><excluUseAr>84.9</excluUseAr><floor>$floor</floor><cdealType>${if (canceled) "O" else ""}</cdealType></item>"
         var lastHeaders: Map<String, String> = emptyMap()
+        var down = false
         val http = HttpGet { url, headers ->
             calls++
             lastHeaders = headers
+            if (down) return@HttpGet 522 to "error code: 522"
             if (url.startsWith("https://proxy.test/")) {
                 if (headers["X-App-Token"] != "tok") return@HttpGet 403 to "{\"error\":\"중계 서버 접근 토큰이 맞지 않아요\"}"
             } else if (!url.contains("serviceKey=good")) return@HttpGet 401 to "Unauthorized"
@@ -305,6 +307,40 @@ class CoreTest {
         val left = call(c, "GET", "/api/notifications").getJSONObject("data").getJSONArray("notifications")
         assertEquals(1, left.length())
         assertEquals("sys", left.getJSONObject(0).getString("id"))
+    }
+
+    @Test fun upstreamDownServesLastDataButPollFails() {
+        val s = FakeServer()
+        s.trades += s.item(3, "300,000", 5)
+        var now = clock()
+        val dir = createTempDir()
+        val c = Core(null, dir, regions, s.http, { _, t, b, _ -> shown.add(t to b); true }, platform, { now })
+        call(c, "POST", "/api/settings", """{"serviceKey":"good"}""")
+        val first = call(c, "GET", "/api/regions/11650/complexes").getJSONObject("data")
+        assertFalse(first.getBoolean("stale"))
+        val id = first.getJSONArray("complexes").getJSONObject(0).getString("id")
+        call(c, "POST", "/api/subscriptions", """{"lawdCd":"11650","complexId":"$id","type":"trade"}""")
+
+        // 2시간 뒤 국토부 서버 장애 (캐시 만료)
+        now += 2 * 3600_000L
+        s.down = true
+        val list = call(c, "GET", "/api/regions/11650/complexes").getJSONObject("data")
+        assertTrue(list.getBoolean("stale"))                 // 마지막으로 받은 자료로 표시
+        assertEquals(1, list.getJSONArray("complexes").length())
+        val deals = call(c, "GET", "/api/complexes/11650/$id/deals?type=trade").getJSONObject("data")
+        assertTrue(deals.getBoolean("stale"))
+        assertEquals(1, deals.getJSONArray("deals").length())
+
+        // 자동 확인은 예전 자료로 판단하지 않고 오류로 기록
+        val r = c.runAutoPoll("alarm")!!
+        assertEquals(1, r.errors.size)
+        assertTrue(r.errors[0].second, r.errors[0].second.contains("응답하지 않아요"))
+
+        // 복구되면 정상
+        s.down = false
+        now += 2 * 3600_000L
+        assertFalse(call(c, "GET", "/api/regions/11650/complexes").getJSONObject("data").getBoolean("stale"))
+        dir.deleteRecursively()
     }
 
     @Test fun canceledAlertsCanBeTurnedOff() {

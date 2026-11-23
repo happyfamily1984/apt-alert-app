@@ -143,7 +143,9 @@ class Api(private val core: Core) {
 
             method == "GET" && r.size == 3 && r[0] == "regions" && r[2] == "complexes" -> {
                 val code = region(r[1])
+                val mark = core.molit.mark()
                 JSONObject().put("region", core.regions.get(code)).put("complexes", JSONArray(core.service.getComplexes(code)))
+                    .put("stale", core.molit.servedStaleSince(code, mark))
             }
 
             method == "GET" && r.size == 3 && r[0] == "complexes" -> {
@@ -155,12 +157,14 @@ class Api(private val core: Core) {
                 val type = query["type"] ?: "trade"
                 if (type !in types) throw ApiError(400, "type은 trade|jeonse|monthly")
                 val months = (query["months"]?.toIntOrNull() ?: core.service.complexMonths).coerceIn(1, 36)
+                val mark = core.molit.mark()
                 val deals = core.service.getDeals(region(r[1]), r[2], type, months)
                 val since = core.molit.today().minusDays(30).toString()
                 JSONObject().put("type", type).put("months", months)
                     .put("deals", JSONArray(deals.map { it.toJson() }))
                     .put("summary30", Service.summarize(deals.filter { it.date >= since }))
                     .put("summaryAll", Service.summarize(deals))
+                    .put("stale", core.molit.servedStaleSince(r[1], mark))
             }
 
             // ----- 구독 -----

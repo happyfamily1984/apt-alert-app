@@ -128,7 +128,10 @@ function toast(msg) {
   toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
 }
 const loading = () => { $view.innerHTML = '<div class="spinner"></div>'; };
-const errorHtml = (e) => `<div class="error">⚠️ ${esc(e.message)}${isApp && !config?.relayOnly && /키|연결|중계/.test(e.message) ? '<br><br><a class="btn primary" href="#/settings">⚙️ 연결 설정하러 가기</a>' : ''}</div>`;
+const errorHtml = (e) => `<div class="error">⚠️ ${esc(e.message)}
+  <br><br><button class="btn primary" onclick="window.__retry && window.__retry()">다시 시도</button>
+  ${isApp && !config?.relayOnly && /키|연결|중계/.test(e.message) ? '<br><br><a class="btn" href="#/settings">⚙️ 연결 설정하러 가기</a>' : ''}</div>`;
+const STALE_NOTE = '<div class="stale-note">⚠️ 국토부 서버가 지금 응답하지 않아 <b>마지막으로 받은 자료</b>를 보여드려요. 잠시 후 다시 확인해 주세요.</div>';
 const showError = (e) => { $view.innerHTML = errorHtml(e); };
 
 function setHeader(title, back) {
@@ -208,7 +211,8 @@ async function viewHome() {
 async function viewRegion(lawd) {
   setHeader('단지 목록', '#/');
   loading();
-  const { region, complexes } = await api(`/api/regions/${lawd}/complexes`);
+  const resp = await api(`/api/regions/${lawd}/complexes`);
+  const { region, complexes } = resp;
   setHeader(region.name, '#/');
   const recent = JSON.parse(store.get('recentRegions') || '[]').filter((x) => x.code !== region.code);
   store.set('recentRegions', JSON.stringify([{ code: region.code, name: region.name }, ...recent].slice(0, 6)));
@@ -225,6 +229,7 @@ async function viewRegion(lawd) {
   if (dong && !dongCount.has(dong)) dong = '';
 
   $view.innerHTML = `
+    ${resp.stale ? STALE_NOTE : ''}
     <div class="chips dong-chips" id="dongChips">
       <button class="chip ${dong ? '' : 'active'}" data-dong="">전체 <small>${complexes.length}</small></button>
       ${dongs.map((d) => `<button class="chip ${d === dong ? 'active' : ''}" data-dong="${esc(d)}">${esc(d)} <small>${dongCount.get(d)}</small></button>`).join('')}
@@ -339,6 +344,7 @@ async function viewComplex(lawd, id, params) {
     const areas = [...new Set(data.deals.map((d) => String(Math.round(d.area))))].sort((a, b) => a - b);
     const s = data.summary30;
     $body.innerHTML = `
+      ${data.stale ? STALE_NOTE : ''}
       ${areas.length > 1 ? `<div class="chips" style="margin-bottom:12px">
         <button class="chip ${area === 'all' ? 'active' : ''}" data-area="all">전체 면적</button>
         ${areas.map((a) => `<button class="chip ${area === a ? 'active' : ''}" data-area="${a}">${a}㎡ (${pyeong(a)}평)</button>`).join('')}
@@ -946,6 +952,7 @@ async function route() {
   } catch (e) {
     showError(e);
   }
+  window.__retry = route;
 }
 
 (async function init() {
